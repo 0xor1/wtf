@@ -9,6 +9,28 @@ import (
 	"github.com/0xor1/tlbx/pkg/web/app"
 )
 
+func NewArgs(size int) *Args {
+	return &Args{
+		args: make([]interface{}, 0, size),
+	}
+}
+
+type Args struct {
+	args []interface{}
+}
+
+func (a *Args) AppendOne(arg interface{}) {
+	a.args = append(a.args, arg)
+}
+
+func (a *Args) Append(arg ...interface{}) {
+	a.args = append(a.args, arg...)
+}
+
+func (a *Args) Is() []interface{} {
+	return a.args
+}
+
 func ReturnNotFoundIfIsNoRows(err error) {
 	app.ReturnIf(IsNoRows(err), http.StatusNotFound, "")
 	PanicOn(err)

@@ -8,10 +8,6 @@ DROP TABLE IF EXISTS users;
 CREATE TABLE users (
     id BINARY(16) NOT NULL,
 	email VARCHAR(250) NOT NULL,
-    handle VARCHAR(20) NULL,
-    alias VARCHAR(50) NULL,
-    hasAvatar BOOLEAN NULL,
-    fcmEnabled BOOLEAN NULL,
     registeredOn DATETIME(3) NOT NULL,
     activatedOn DATETIME(3) NOT NULL,
 	newEmail VARCHAR(250) NULL,

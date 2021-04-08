@@ -16,6 +16,7 @@ require (
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/oklog/ulid/v2 v2.0.2
 	github.com/stretchr/testify v1.6.1
+	github.com/valyala/quicktemplate v1.6.3 // indirect
 	go.opencensus.io v0.22.6 // indirect
 	golang.org/x/crypto v0.0.0-20200728195943-123391ffb6de
 	golang.org/x/image v0.0.0-20200801110659-972c09e46d76 // indirect

@@ -16,8 +16,7 @@ import (
 
 const (
 	cache     = "cache"
-	sqlUser   = "user"
-	sqlPwd    = "pwd"
+	sqlAuth   = "auth"
 	sqlData   = "data"
 	emailName = "email"
 	storeName = "store"
@@ -26,23 +25,21 @@ const (
 
 type Layer interface {
 	Cache() redis.Pool
-	User() sql.Client
-	Pwd() sql.Client
+	Auth() sql.Client
 	Data() sql.Client
 	Email() email.Client
 	Store() store.Client
 	FCM() fcmmw.Client
 }
 
-func Mware(pool iredis.Pool, user, pwd, data isql.ReplicaSet, email email.Client, store store.Client, fcm fcm.Client) func(app.Tlbx) {
+func Mware(pool iredis.Pool, auth, data isql.ReplicaSet, email email.Client, store store.Client, fcm fcm.Client) func(app.Tlbx) {
 	mwares := []func(app.Tlbx){
 		redis.Mware(cache, pool),
-		sql.Mware(sqlUser, user),
-		sql.Mware(sqlPwd, pwd),
+		sql.Mware(sqlAuth, auth),
 		sql.Mware(sqlData, data),
 		emailmw.Mware(emailName, email),
 		storemw.Mware(storeName, store),
-		fcmmw.Mware(sqlUser, fcmName, fcm),
+		fcmmw.Mware(sqlAuth, fcmName, fcm),
 	}
 	return func(tlbx app.Tlbx) {
 		for _, mw := range mwares {
@@ -63,12 +60,8 @@ func (l *layer) Cache() redis.Pool {
 	return redis.Get(l.tlbx, cache)
 }
 
-func (l *layer) User() sql.Client {
-	return sql.Get(l.tlbx, sqlUser)
-}
-
-func (l *layer) Pwd() sql.Client {
-	return sql.Get(l.tlbx, sqlPwd)
+func (l *layer) Auth() sql.Client {
+	return sql.Get(l.tlbx, sqlAuth)
 }
 
 func (l *layer) Data() sql.Client {

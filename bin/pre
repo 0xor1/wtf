@@ -12,6 +12,7 @@ docker-compose -f docker/docker-compose.yml up -d
 ./bin/wait-for-it -t 5 127.0.0.1:9000 -- echo "minio ready"
 ./bin/wait-for-it -t 60 127.0.0.1:3306 -- echo "mariadb ready"
 
+go generate ./... && \
 go fmt ./... && \
 go test -p=$(nproc) -coverprofile=coverage.out ./... && \
 go tool cover -html=coverage.out && \
