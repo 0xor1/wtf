@@ -31,7 +31,6 @@ func NewMe(
 	fromEmail,
 	activateFmtLink,
 	confirmChangeEmailFmtLink string,
-	onActivate func(app.Tlbx, ID, interface{}),
 	onDelete func(app.Tlbx, ID),
 ) []*app.Endpoint {
 	return New(
@@ -42,7 +41,6 @@ func NewMe(
 		me.Set,
 		me.Get,
 		me.Del,
-		onActivate,
 		onDelete)
 }
 
@@ -50,7 +48,6 @@ func NewOpt(
 	fromEmail,
 	activateFmtLink,
 	confirmChangeEmailFmtLink string,
-	onActivate func(app.Tlbx, ID, interface{}),
 	onDelete func(app.Tlbx, ID),
 ) []*app.Endpoint {
 	return New(
@@ -61,7 +58,6 @@ func NewOpt(
 		opt.AuthedSet,
 		opt.AuthedGet,
 		opt.Del,
-		onActivate,
 		onDelete)
 }
 
@@ -73,7 +69,6 @@ func New(
 	sessionSet func(app.Tlbx, ID),
 	sessionGet func(app.Tlbx) ID,
 	sessionDel func(app.Tlbx),
-	onActivate func(app.Tlbx, ID, interface{}),
 	onDelete func(app.Tlbx, ID),
 ) []*app.Endpoint {
 	return []*app.Endpoint{
@@ -88,8 +83,8 @@ func New(
 			},
 			GetExampleArgs: func() interface{} {
 				return &auth.Register{
-					Email:   "joe@bloggs.example",
-					Pwd:     "J03-8l0-Gg5-Pwd",
+					Email: "joe@bloggs.example",
+					Pwd:   "J03-8l0-Gg5-Pwd",
 				}
 			},
 			GetExampleResponse: func() interface{} {
@@ -107,20 +102,18 @@ func New(
 				auth.RegisteredOn = Now()
 				srv := service.Get(tlbx)
 
-				usrtx := srv.Auth().Begin()
+				tx := srv.Auth().Begin()
 				defer usrtx.Rollback()
-				_, err := usrtx.Exec("INSERT INTO users (id, email, handle, alias, hasAvatar, fcmEnabled, registeredOn, activatedOn, activateCode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", id, args.Email, args.Handle, args.Alias, hasAvatar, fcmEnabled, Now(), time.Time{}, activateCode)
+				var qryArgs *sqlh.Args
+				qry := qryInsert(qryArgs, auth)
+				_, err := tx.Exec(qry, qryArgs.Is()...)
 				if err != nil {
 					mySqlErr, ok := err.(*mysql.MySQLError)
-					app.BadReqIf(ok && mySqlErr.Number == 1062, "email or handle already registered")
+					app.BadReqIf(ok && mySqlErr.Number == 1062, "email already registered")
 					PanicOn(err)
 				}
-				pwdtx := srv.Pwd().Begin()
-				defer pwdtx.Rollback()
-				setPwd(tlbx, pwdtx, id, args.Pwd, args.ConfirmPwd)
-				sendActivateEmail(srv, args.Email, fromEmail, Strf(activateFmtLink, url.QueryEscape(args.Email), activateCode), args.Handle)
-				usrtx.Commit()
-				pwdtx.Commit()
+				sendActivateEmail(srv, args.Email, fromEmail, Strf(activateFmtLink, url.QueryEscape(args.Email), activateCode))
+				tx.Commit()
 				return nil
 			},
 		},
@@ -142,16 +135,16 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.ResendActivateLink)
+				args := a.(*auth.ResendActivateLink)
 				srv := service.Get(tlbx)
-				tx := srv.User().Begin()
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
 				fullUser := getAuth(tx, &args.Email, nil)
 				tx.Commit()
 				if fullUser == nil || fullUser.ActivateCode == nil {
 					return nil
 				}
-				sendActivateEmail(srv, args.Email, fromEmail, Strf(activateFmtLink, url.QueryEscape(args.Email), *fullUser.ActivateCode), fullUser.Handle)
+				sendActivateEmail(srv, args.Email, fromEmail, Strf(activateFmtLink, url.QueryEscape(args.Email), *fullUser.ActivateCode))
 				return nil
 			},
 		},
@@ -174,19 +167,15 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.Activate)
+				args := a.(*auth.Activate)
 				srv := service.Get(tlbx)
-				tx := srv.User().Begin()
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
-				user := getAuth(tx, &args.Email, nil)
-				app.BadReqIf(*user.ActivateCode != args.Code, "")
-				now := Now()
-				user.ActivatedOn = now
-				user.ActivateCode = nil
-				updateAuth(tx, user)
-				if onActivate != nil {
-					onActivate(tlbx, &auth.User)
-				}
+				auth := getAuth(tx, &args.Email, nil)
+				app.BadReqIf(*auth.ActivateCode != args.Code, "")
+				auth.ActivatedOn = Now()
+				auth.ActivateCode = nil
+				updateAuth(tx, auth)
 				tx.Commit()
 				return nil
 			},
@@ -209,13 +198,13 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.ChangeEmail)
+				args := a.(*auth.ChangeEmail)
 				args.NewEmail = StrTrimWS(args.NewEmail)
 				validate.Str("email", args.NewEmail, tlbx, 0, emailMaxLen, emailRegex)
 				srv := service.Get(tlbx)
 				me := sessionGet(tlbx)
 				changeEmailCode := crypt.UrlSafeString(250)
-				tx := srv.User().Begin()
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
 				existingUser := getAuth(tx, &args.NewEmail, nil)
 				app.BadReqIf(existingUser != nil, "email already registered")
@@ -273,16 +262,16 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.ConfirmChangeEmail)
+				args := a.(*auth.ConfirmChangeEmail)
 				srv := service.Get(tlbx)
 				tx := srv.User().Begin()
 				defer tx.Rollback()
-				user := getAuth(tx, nil, &args.Me)
-				app.BadReqIf(*user.ChangeEmailCode != args.Code, "")
-				user.ChangeEmailCode = nil
-				user.Email = *user.NewEmail
-				user.NewEmail = nil
-				updateAuth(tx, user)
+				auth := getAuth(tx, nil, &args.Me)
+				app.BadReqIf(*auth.ChangeEmailCode != args.Code, "")
+				auth.ChangeEmailCode = nil
+				auth.Email = *auth.NewEmail
+				auth.NewEmail = nil
+				updateAuth(tx, auth)
 				tx.Commit()
 				return nil
 			},
@@ -305,19 +294,19 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.ResetPwd)
+				args := a.(*auth.ResetPwd)
 				srv := service.Get(tlbx)
 				tx := srv.User().Begin()
 				defer tx.Rollback()
-				user := getAuth(tx, &args.Email, nil)
-				if user != nil {
+				auth := getAuth(tx, &args.Email, nil)
+				if auth != nil {
 					now := Now()
-					if user.LastPwdResetOn != nil {
-						mustWaitDur := (10 * time.Minute) - Now().Sub(*user.LastPwdResetOn)
+					if auth.LastPwdResetOn != nil {
+						mustWaitDur := (10 * time.Minute) - Now().Sub(*auth.LastPwdResetOn)
 						app.BadReqIf(mustWaitDur > 0, "must wait %d seconds before reseting pwd again", int64(math.Ceil(mustWaitDur.Seconds())))
 					}
-					user.LastPwdResetOn = &now
-					updateAuth(tx, user)
+					auth.LastPwdResetOn = &now
+					updateAuth(tx, auth)
 					pwdtx := srv.Pwd().Begin()
 					defer pwdtx.Rollback()
 					newPwd := `$aA1` + crypt.UrlSafeString(12)
@@ -348,7 +337,7 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.SetPwd)
+				args := a.(*auth.SetPwd)
 				srv := service.Get(tlbx)
 				me := sessionGet(tlbx)
 				pwd := getPwd(srv, me)
@@ -378,7 +367,7 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.Delete)
+				args := a.(*auth.Delete)
 				srv := service.Get(tlbx)
 				m := sessionGet(tlbx)
 				pwd := getPwd(srv, m)
@@ -418,7 +407,7 @@ func New(
 				emailOrPwdMismatch := func(condition bool) {
 					app.ReturnIf(condition, http.StatusNotFound, "email and/or pwd are not valid")
 				}
-				args := a.(*user.Login)
+				args := a.(*auth.Login)
 				validate.Str("email", args.Email, tlbx, 0, emailMaxLen, emailRegex)
 				validate.Str("pwd", args.Pwd, tlbx, pwdMinLen, pwdMaxLen, pwdRegexs...)
 				srv := service.Get(tlbx)

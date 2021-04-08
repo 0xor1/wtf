@@ -25,12 +25,9 @@ var (
 
 //line autheps.sql:4
 func streamqryInsert(qw422016 *qt422016.Writer, args *sql.Args, auth *fullAuth) {
-//line autheps.sql:4
-	qw422016.N().S(`
-`)
 //line autheps.sql:5
-	qw422016.N().S(` INSERT INTO auths (id, email, registeredOn, activatedOn, newEmail, activateCode, changeEmailCode, lastPwdResetOn, salt, pwd, n, r, p) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) `)
-//line autheps.sql:36
+	qw422016.N().S(`INSERT INTO auths (id, email, registeredOn, activatedOn, newEmail, activateCode, changeEmailCode, lastPwdResetOn, salt, pwd, n, r, p) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) `)
+//line autheps.sql:34
 	*args = sql.NewArgs(13)
 	args.Append(
 		auth.ID,
@@ -49,114 +46,94 @@ func streamqryInsert(qw422016 *qt422016.Writer, args *sql.Args, auth *fullAuth) 
 	)
 
 //line autheps.sql:51
-	qw422016.N().S(` `)
-//line autheps.sql:52
-	qw422016.N().S(`
-`)
-//line autheps.sql:53
 }
 
-//line autheps.sql:53
+//line autheps.sql:51
 func writeqryInsert(qq422016 qtio422016.Writer, args *sql.Args, auth *fullAuth) {
-//line autheps.sql:53
+//line autheps.sql:51
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line autheps.sql:53
+//line autheps.sql:51
 	streamqryInsert(qw422016, args, auth)
-//line autheps.sql:53
+//line autheps.sql:51
 	qt422016.ReleaseWriter(qw422016)
-//line autheps.sql:53
+//line autheps.sql:51
 }
 
-//line autheps.sql:53
+//line autheps.sql:51
 func qryInsert(args *sql.Args, auth *fullAuth) string {
-//line autheps.sql:53
+//line autheps.sql:51
 	qb422016 := qt422016.AcquireByteBuffer()
-//line autheps.sql:53
+//line autheps.sql:51
 	writeqryInsert(qb422016, args, auth)
-//line autheps.sql:53
+//line autheps.sql:51
 	qs422016 := string(qb422016.B)
-//line autheps.sql:53
+//line autheps.sql:51
 	qt422016.ReleaseByteBuffer(qb422016)
-//line autheps.sql:53
+//line autheps.sql:51
 	return qs422016
-//line autheps.sql:53
+//line autheps.sql:51
 }
 
-//line autheps.sql:55
+//line autheps.sql:53
 func streamqryGet(qw422016 *qt422016.Writer, args *sql.Args, email *string, id *ID) {
-//line autheps.sql:55
-	qw422016.N().S(`
-`)
 //line autheps.sql:56
-	qw422016.N().S(` `)
-//line autheps.sql:58
 	PanicIf(email == nil && id == nil, "one of email or id must not be nil")
 	*args = sql.NewArgs(1)
 
-//line autheps.sql:59
-	qw422016.N().S(` SELECT id, email, registeredOn, activatedOn, newEmail, activateCode, changeEmailCode, lastPwdResetOn, salt, pwd, n, r, p FROM auths WHERE `)
-//line autheps.sql:76
+//line autheps.sql:57
+	qw422016.N().S(`SELECT id, email, registeredOn, activatedOn, newEmail, activateCode, changeEmailCode, lastPwdResetOn, salt, pwd, n, r, p FROM auths WHERE `)
+//line autheps.sql:73
 	if email != nil {
-//line autheps.sql:76
-		qw422016.N().S(` email `)
-//line autheps.sql:78
+//line autheps.sql:73
+		qw422016.N().S(`email `)
+//line autheps.sql:75
 		args.AppendOne(*email)
 
-//line autheps.sql:78
-		qw422016.N().S(` `)
-//line autheps.sql:79
+//line autheps.sql:76
 	} else {
-//line autheps.sql:79
-		qw422016.N().S(` id `)
-//line autheps.sql:81
+//line autheps.sql:76
+		qw422016.N().S(`id `)
+//line autheps.sql:78
 		args.AppendOne(*id)
 
-//line autheps.sql:81
-		qw422016.N().S(` `)
-//line autheps.sql:82
+//line autheps.sql:79
 	}
+//line autheps.sql:79
+	qw422016.N().S(`=? `)
 //line autheps.sql:82
-	qw422016.N().S(` = ? `)
-//line autheps.sql:85
-	qw422016.N().S(`
-`)
-//line autheps.sql:86
 }
 
-//line autheps.sql:86
+//line autheps.sql:82
 func writeqryGet(qq422016 qtio422016.Writer, args *sql.Args, email *string, id *ID) {
-//line autheps.sql:86
+//line autheps.sql:82
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line autheps.sql:86
+//line autheps.sql:82
 	streamqryGet(qw422016, args, email, id)
-//line autheps.sql:86
+//line autheps.sql:82
 	qt422016.ReleaseWriter(qw422016)
-//line autheps.sql:86
+//line autheps.sql:82
 }
 
-//line autheps.sql:86
+//line autheps.sql:82
 func qryGet(args *sql.Args, email *string, id *ID) string {
-//line autheps.sql:86
+//line autheps.sql:82
 	qb422016 := qt422016.AcquireByteBuffer()
-//line autheps.sql:86
+//line autheps.sql:82
 	writeqryGet(qb422016, args, email, id)
-//line autheps.sql:86
+//line autheps.sql:82
 	qs422016 := string(qb422016.B)
-//line autheps.sql:86
+//line autheps.sql:82
 	qt422016.ReleaseByteBuffer(qb422016)
-//line autheps.sql:86
+//line autheps.sql:82
 	return qs422016
-//line autheps.sql:86
+//line autheps.sql:82
 }
 
-//line autheps.sql:88
+//line autheps.sql:84
 func streamqryUpdate(qw422016 *qt422016.Writer, args *sql.Args, auth *fullAuth) {
-//line autheps.sql:88
-	qw422016.N().S(`
-`)
-//line autheps.sql:89
-	qw422016.N().S(` UPDATE auths SET email=?, registeredOn=?, activatedOn=?, newEmail=?, activateCode=?, changeEmailCode=?, lastPwdResetOn=?, salt=?, pwd=?, n=?, r=?, p=? WHERE id=? `)
-//line autheps.sql:107
+//line autheps.sql:85
+	qw422016.N().S(`UPDATE auths SET email=?, registeredOn=?, activatedOn=?, newEmail=?, activateCode=?, changeEmailCode=?, lastPwdResetOn=?, salt=?, pwd=?, n=?, r=?, p=? WHERE id=? `)
+//line autheps.sql:102
 	*args = sql.NewArgs(13)
 	args.Append(
 		auth.Email,
@@ -174,36 +151,31 @@ func streamqryUpdate(qw422016 *qt422016.Writer, args *sql.Args, auth *fullAuth) 
 		auth.ID,
 	)
 
-//line autheps.sql:122
-	qw422016.N().S(` `)
-//line autheps.sql:123
-	qw422016.N().S(`
-`)
-//line autheps.sql:124
+//line autheps.sql:119
 }
 
-//line autheps.sql:124
+//line autheps.sql:119
 func writeqryUpdate(qq422016 qtio422016.Writer, args *sql.Args, auth *fullAuth) {
-//line autheps.sql:124
+//line autheps.sql:119
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line autheps.sql:124
+//line autheps.sql:119
 	streamqryUpdate(qw422016, args, auth)
-//line autheps.sql:124
+//line autheps.sql:119
 	qt422016.ReleaseWriter(qw422016)
-//line autheps.sql:124
+//line autheps.sql:119
 }
 
-//line autheps.sql:124
+//line autheps.sql:119
 func qryUpdate(args *sql.Args, auth *fullAuth) string {
-//line autheps.sql:124
+//line autheps.sql:119
 	qb422016 := qt422016.AcquireByteBuffer()
-//line autheps.sql:124
+//line autheps.sql:119
 	writeqryUpdate(qb422016, args, auth)
-//line autheps.sql:124
+//line autheps.sql:119
 	qs422016 := string(qb422016.B)
-//line autheps.sql:124
+//line autheps.sql:119
 	qt422016.ReleaseByteBuffer(qb422016)
-//line autheps.sql:124
+//line autheps.sql:119
 	return qs422016
-//line autheps.sql:124
+//line autheps.sql:119
 }
