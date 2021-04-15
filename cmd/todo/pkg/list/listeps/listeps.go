@@ -38,7 +38,7 @@ var (
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
 				args := a.(*list.Create)
 				validate.Str("name", args.Name, tlbx, nameMinLen, nameMaxLen)
-				me := me.Get(tlbx)
+				me := me.GetAuthed(tlbx)
 				srv := service.Get(tlbx)
 				res := &list.List{
 					ID:                 tlbx.NewID(),
@@ -122,7 +122,7 @@ var (
 				list := getSetRes.Set[0]
 				list.Name = args.Name.V
 				srv := service.Get(tlbx)
-				_, err := srv.Data().Exec(`UPDATE lists SET name=? WHERE user=? AND id=?`, list.Name, me.Get(tlbx), list.ID)
+				_, err := srv.Data().Exec(`UPDATE lists SET name=? WHERE user=? AND id=?`, list.Name, me.GetAuthed(tlbx), list.ID)
 				PanicOn(err)
 				return list
 			},
@@ -151,7 +151,7 @@ var (
 					return nil
 				}
 				validate.MaxIDs(tlbx, "ids", args.IDs, 100)
-				me := me.Get(tlbx)
+				me := me.GetAuthed(tlbx)
 				srv := service.Get(tlbx)
 				queryArgs := make([]interface{}, 0, idsLen+1)
 				queryArgs = append(queryArgs, me)
@@ -207,7 +207,7 @@ func getSet(tlbx app.Tlbx, args *list.Get) *list.GetRes {
 			*args.CompletedItemCountMin > *args.CompletedItemCountMax,
 		"completedItemCountMin must not be greater than completedItemCountMax")
 	args.Limit = sql.Limit100(args.Limit)
-	me := me.Get(tlbx)
+	me := me.GetAuthed(tlbx)
 	srv := service.Get(tlbx)
 	res := &list.GetRes{
 		Set: make([]*list.List, 0, args.Limit),

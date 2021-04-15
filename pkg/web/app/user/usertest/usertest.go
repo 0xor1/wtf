@@ -126,7 +126,7 @@ func Everything(t *testing.T) {
 
 	newPwd := pwd + "123abc"
 	(&user.SetPwd{
-		CurrentPwd:    pwd,
+		OldPwd:    pwd,
 		NewPwd:        newPwd,
 		ConfirmNewPwd: newPwd,
 	}).MustDo(c)

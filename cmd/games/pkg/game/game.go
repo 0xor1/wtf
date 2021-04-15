@@ -69,8 +69,8 @@ func (b *Base) Abandoned() bool {
 
 func (b *Base) setMyID(tlbx app.Tlbx) {
 	// only set myId on active games
-	if b.IsActive() && me.Exists(tlbx) {
-		me := me.Get(tlbx)
+	if b.IsActive() && me.AuthedExists(tlbx) {
+		me := me.GetAuthed(tlbx)
 		// loop through players only setting myId
 		// if they're an active player in this game
 		for _, p := range b.Players {
@@ -95,7 +95,7 @@ func New(tlbx app.Tlbx, gameType string, game Game) {
 	defer tx.Rollback()
 	id := tlbx.NewID()
 	// assign new session id for a new game so no clashes with old finished games
-	me.Set(tlbx, id)
+	me.SetAuthed(tlbx, id)
 	b.ID = id
 	b.Players = []ID{id}
 	serialized := json.MustMarshal(game)
@@ -118,7 +118,7 @@ func Join(tlbx app.Tlbx, maxPlayers uint8, gameType string, game ID, dst Game) G
 	// assign new session id for a new game so no clashes with old finished games
 	newUserID := tlbx.NewID()
 	b.Players = append(b.Players, newUserID)
-	me.Set(tlbx, newUserID)
+	me.SetAuthed(tlbx, newUserID)
 	tx.Exec(`INSERT INTO players (id, game) VALUES (?, ?)`, newUserID, b.ID)
 	update(tlbx, tx, gameType, g)
 	tx.Commit()
@@ -134,7 +134,7 @@ func Start(tlbx app.Tlbx, minPlayers uint8, randomizePlayerOrder bool, gameType 
 	b := g.GetBase()
 	app.BadReqIf(!b.NotStarted(), "can't start a game that has already been started")
 	app.BadReqIf(len(b.Players) < int(minPlayers), "game hasn't met minimum player count requirement: %d", minPlayers)
-	app.BadReqIf(!b.ID.Equal(me.Get(tlbx)), "only the creator can start the game")
+	app.BadReqIf(!b.ID.Equal(me.GetAuthed(tlbx)), "only the creator can start the game")
 	if customSetup != nil {
 		customSetup(g)
 	}
@@ -246,8 +246,8 @@ func getUsersActiveGame(tlbx app.Tlbx, tx sql.Tx, forUpdate bool, gameType strin
 	PanicIf(forUpdate && tx == nil, "tx required forUpdate get call")
 	PanicIf(!forUpdate && tx != nil, "tx must be nil if it is a not forUpdate get call")
 	buf := make([]byte, 0, 5*app.KB)
-	if me.Exists(tlbx) {
-		me := me.Get(tlbx)
+	if me.AuthedExists(tlbx) {
+		me := me.GetAuthed(tlbx)
 		query := `SELECT g.type, g.serialized FROM games g INNER JOIN players p ON p.game=g.id WHERE p.id=?`
 		var row isql.Row
 		if forUpdate {

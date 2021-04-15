@@ -40,6 +40,40 @@ type Tx interface {
 	Commit()
 }
 
+type DoTx interface {
+	Rollback()
+	Do()
+	Commit()
+}
+
+func NewDoTx(tx Tx, do func(Tx)) DoTx {
+	return &doTx{
+		tx: tx,
+		do: do,
+	}
+}
+
+type doTx struct {
+	tx Tx
+	do func(Tx)
+}
+
+func (t *doTx) Rollback() {
+	t.tx.Rollback()
+}
+func (t *doTx) Do() {
+	t.do(t.tx)
+}
+func (t *doTx) Commit() {
+	t.tx.Commit()
+}
+
+type NoopDoTx struct{}
+
+func (_ *NoopDoTx) Rollback() {}
+func (_ *NoopDoTx) Do()       {}
+func (_ *NoopDoTx) Commit()   {}
+
 type tx struct {
 	tx        isql.Tx
 	tlbx      app.Tlbx

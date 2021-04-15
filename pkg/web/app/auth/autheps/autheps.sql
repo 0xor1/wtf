@@ -1,14 +1,13 @@
 {% import . "github.com/0xor1/tlbx/pkg/core" %}
-{% import . "github.com/0xor1/tlbx/pkg/web/app/sql" %}
+{% import "github.com/0xor1/tlbx/pkg/web/app/sql" %}
 
-{% func qryInsert(args *sql.Args, auth *fullAuth) %}
-{% collapsespace %}
-
-INSERT INTO auths
-    (id,
+{%- func qryInsert(args *sql.Args, auth *fullAuth) -%}
+{%- collapsespace -%}
+INSERT INTO auths(
+    id,
     email,
+    isActivated,
     registeredOn,
-    activatedOn,
     newEmail,
     activateCode,
     changeEmailCode,
@@ -17,8 +16,9 @@ INSERT INTO auths
     pwd,
     n,
     r,
-    p)
-VALUES (?,
+    p
+)
+VALUES (
     ?,
     ?,
     ?,
@@ -30,15 +30,16 @@ VALUES (?,
     ?,
     ?,
     ?,
-    ?)
-
-{%code 
-    *args = sql.NewArgs(13) 
+    ?,
+    ?
+)
+{%- code 
+    *args = *sql.NewArgs(13) 
     args.Append(
     auth.ID,
     auth.Email, 
+    auth.IsActivated, 
     auth.RegisteredOn, 
-    auth.ActivatedOn, 
     auth.NewEmail, 
     auth.ActivateCode, 
     auth.ChangeEmailCode,
@@ -48,20 +49,20 @@ VALUES (?,
     auth.N,
     auth.R,
     auth.P,
-)%}
-{% endcollapsespace %}
-{% endfunc %}
+) -%}
+{%- endcollapsespace -%}
+{%- endfunc -%}
 
-{% func qryGet(args *sql.Args, email *string, id *ID) %}
-{% collapsespace %}
-{%code 
+{%- func qryGet(args *sql.Args, email *string, id *ID) -%}
+{%- collapsespace -%}
+{%- code 
     PanicIf(email == nil && id == nil, "one of email or id must not be nil")
-    *args = sql.NewArgs(1) %}
-
-SELECT id,
+    *args = *sql.NewArgs(1) -%}
+SELECT
+    id,
     email,
+    isActivated,
     registeredOn,
-    activatedOn,
     newEmail,
     activateCode,
     changeEmailCode,
@@ -73,25 +74,23 @@ SELECT id,
     p
 FROM auths
 WHERE
-	{% if email != nil %}
+	{%- if email != nil -%}
 	email
-    {% code args.AppendOne(*email)%}
-	{% else %}
+    {%- code args.AppendOne(*email) -%}
+	{%- else -%}
 	id
-    {% code args.AppendOne(*id) %}
-	{% endif %}
-    = ?
+    {%- code args.AppendOne(*id) -%}
+	{%- endif -%}
+    =?
+{%- endcollapsespace -%}
+{%- endfunc -%}
 
-{% endcollapsespace %}
-{% endfunc %}
-
-{% func qryUpdate(args *sql.Args, auth *fullAuth) %}
-{% collapsespace %}
-
+{%- func qryUpdate(args *sql.Args, auth *fullAuth) -%}
+{%- collapsespace -%}
 UPDATE auths
 SET email=?,
+    isActivated=?,
     registeredOn=?,
-    activatedOn=?,
     newEmail=?,
     activateCode=?,
     changeEmailCode=?,
@@ -102,15 +101,14 @@ SET email=?,
     r=?,
     p=?
 WHERE id=?
-
-{%code 
-    *args = sql.NewArgs(13) 
+{%- code 
+    *args = *sql.NewArgs(13) 
     args.Append(
-    auth.Email, 
-    auth.RegisteredOn, 
-    auth.ActivatedOn, 
+    auth.Email,
+    auth.IsActivated,
+    auth.RegisteredOn,
     auth.NewEmail, 
-    auth.ActivateCode, 
+    auth.ActivateCode,
     auth.ChangeEmailCode,
     auth.LastPwdResetOn,
     auth.Salt,
@@ -119,6 +117,17 @@ WHERE id=?
     auth.R,
     auth.P,
     auth.ID,
-)%}
-{% endcollapsespace %}
-{% endfunc %}
+) -%}
+{%- endcollapsespace -%}
+{%- endfunc -%}
+
+{%- func qryDel(args *sql.Args, me ID) -%}
+{%- collapsespace -%}
+DELETE FROM auths
+WHERE id=?
+{%- code 
+    *args = *sql.NewArgs(1) 
+    args.Append(me)
+-%}
+{%- endcollapsespace -%}
+{%- endfunc -%}

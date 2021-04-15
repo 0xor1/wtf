@@ -178,9 +178,8 @@ func (a *SetAvatar) MustDo(c *app.Client) {
 }
 
 type SetPwd struct {
-	CurrentPwd    string `json:"currentPwd"`
-	NewPwd        string `json:"newPwd"`
-	ConfirmNewPwd string `json:"confirmNewPwd"`
+	OldPwd string `json:"oldPwd"`
+	NewPwd string `json:"newPwd"`
 }
 
 func (_ *SetPwd) Path() string {

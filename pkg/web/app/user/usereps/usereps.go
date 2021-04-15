@@ -25,7 +25,6 @@ import (
 	"github.com/0xor1/tlbx/pkg/web/app/service"
 	"github.com/0xor1/tlbx/pkg/web/app/service/sql"
 	"github.com/0xor1/tlbx/pkg/web/app/session/me"
-	"github.com/0xor1/tlbx/pkg/web/app/session/opt"
 	sqlh "github.com/0xor1/tlbx/pkg/web/app/sql"
 	"github.com/0xor1/tlbx/pkg/web/app/user"
 	"github.com/0xor1/tlbx/pkg/web/app/validate"
@@ -56,9 +55,9 @@ func NewMe(
 		fromEmail,
 		activateFmtLink,
 		confirmChangeEmailFmtLink,
-		me.Exists,
-		me.Set,
-		me.Get,
+		me.AuthedExists,
+		me.SetAuthed,
+		me.GetAuthed,
 		me.Del,
 		onActivate,
 		onDelete,
@@ -403,7 +402,7 @@ func New(
 			},
 			GetExampleArgs: func() interface{} {
 				return &user.SetPwd{
-					CurrentPwd:    "J03-8l0-Gg5-Pwd",
+					OldPwd:    "J03-8l0-Gg5-Pwd",
 					NewPwd:        "N3w-J03-8l0-Gg5-Pwd",
 					ConfirmNewPwd: "N3w-J03-8l0-Gg5-Pwd",
 				}
@@ -416,7 +415,7 @@ func New(
 				srv := service.Get(tlbx)
 				me := sessionGet(tlbx)
 				pwd := getPwd(srv, me)
-				app.BadReqIf(!bytes.Equal(crypt.ScryptKey([]byte(args.CurrentPwd), pwd.Salt, pwd.N, pwd.R, pwd.P, scryptKeyLen), pwd.Pwd), "current pwd does not match")
+				app.BadReqIf(!bytes.Equal(crypt.ScryptKey([]byte(args.OldPwd), pwd.Salt, pwd.N, pwd.R, pwd.P, scryptKeyLen), pwd.Pwd), "current pwd does not match")
 				pwdtx := srv.Pwd().Begin()
 				defer pwdtx.Rollback()
 				setPwd(tlbx, pwdtx, me, args.NewPwd, args.ConfirmNewPwd)

@@ -20,62 +20,47 @@ import (
 	"github.com/0xor1/tlbx/pkg/web/app/service"
 	"github.com/0xor1/tlbx/pkg/web/app/service/sql"
 	"github.com/0xor1/tlbx/pkg/web/app/session/me"
-	"github.com/0xor1/tlbx/pkg/web/app/session/opt"
 	sqlh "github.com/0xor1/tlbx/pkg/web/app/sql"
-	"github.com/0xor1/tlbx/pkg/web/app/user"
 	"github.com/0xor1/tlbx/pkg/web/app/validate"
 	"github.com/go-sql-driver/mysql"
 )
 
-func NewMe(
-	fromEmail,
-	activateFmtLink,
-	confirmChangeEmailFmtLink string,
-	onActivate func(app.Tlbx, ID, interface{}),
-	onDelete func(app.Tlbx, ID),
-) []*app.Endpoint {
-	return New(
-		fromEmail,
-		activateFmtLink,
-		confirmChangeEmailFmtLink,
-		me.Exists,
-		me.Set,
-		me.Get,
-		me.Del,
-		onActivate,
-		onDelete)
+type Config struct {
+	AppDataDefault func() interface{}
+	AppDataExample func() interface{}
+	OnRegister     func(tlbx app.Tlbx, me ID, appData interface{}) sql.DoTx
+	OnActivate     func(tlbx app.Tlbx, me ID) sql.DoTx
+	OnDelete       func(tlbx app.Tlbx, me ID) sql.DoTx
+	OnLogout       func(tlbx app.Tlbx, me ID) sql.DoTx
 }
 
-func NewOpt(
-	fromEmail,
-	activateFmtLink,
-	confirmChangeEmailFmtLink string,
-	onActivate func(app.Tlbx, ID, interface{}),
-	onDelete func(app.Tlbx, ID),
-) []*app.Endpoint {
-	return New(
-		fromEmail,
-		activateFmtLink,
-		confirmChangeEmailFmtLink,
-		opt.AuthedExists,
-		opt.AuthedSet,
-		opt.AuthedGet,
-		opt.Del,
-		onActivate,
-		onDelete)
+func config(configs ...func(*Config)) *Config {
+	noopDoTx := func(app.Tlbx, ID) sql.DoTx {
+		return &sql.NoopDoTx{}
+	}
+	c := &Config{
+		AppDataDefault: func() interface{} { return nil },
+		AppDataExample: func() interface{} { return nil },
+		OnRegister: func(tlbx app.Tlbx, id ID, appData interface{}) sql.DoTx {
+			return noopDoTx(tlbx, id)
+		},
+		OnActivate: noopDoTx,
+		OnDelete:   noopDoTx,
+		OnLogout:   noopDoTx,
+	}
+	for _, config := range configs {
+		config(c)
+	}
+	return c
 }
 
 func New(
 	fromEmail,
 	activateFmtLink,
 	confirmChangeEmailFmtLink string,
-	sessionExists func(app.Tlbx) bool,
-	sessionSet func(app.Tlbx, ID),
-	sessionGet func(app.Tlbx) ID,
-	sessionDel func(app.Tlbx),
-	onActivate func(app.Tlbx, ID, interface{}),
-	onDelete func(app.Tlbx, ID),
+	configs ...func(*Config),
 ) []*app.Endpoint {
+	c := config(configs...)
 	return []*app.Endpoint{
 		{
 			Description:  "register a new account (requires email link)",
@@ -84,43 +69,48 @@ func New(
 			MaxBodyBytes: app.KB,
 			IsPrivate:    false,
 			GetDefaultArgs: func() interface{} {
-				return &auth.Register{}
+				return &auth.Register{
+					AppData: c.AppDataDefault(),
+				}
 			},
 			GetExampleArgs: func() interface{} {
 				return &auth.Register{
 					Email:   "joe@bloggs.example",
 					Pwd:     "J03-8l0-Gg5-Pwd",
+					AppData: c.AppDataExample(),
 				}
 			},
 			GetExampleResponse: func() interface{} {
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				app.BadReqIf(sessionExists(tlbx), "already logged in")
+				app.BadReqIf(me.AuthedExists(tlbx), "already logged in")
 				args := a.(*auth.Register)
 				args.Email = StrTrimWS(args.Email)
 				validate.Str("email", args.Email, tlbx, 0, emailMaxLen, emailRegex)
 				auth := &fullAuth{}
+				auth.setPwd(tlbx, args.Pwd)
 				auth.Me.ID = tlbx.NewID()
 				auth.Me.Email = args.Email
 				auth.ActivateCode = ptr.String(crypt.UrlSafeString(250))
 				auth.RegisteredOn = Now()
 				srv := service.Get(tlbx)
-
-				usrtx := srv.Auth().Begin()
-				defer usrtx.Rollback()
-				_, err := usrtx.Exec("INSERT INTO users (id, email, handle, alias, hasAvatar, fcmEnabled, registeredOn, activatedOn, activateCode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", id, args.Email, args.Handle, args.Alias, hasAvatar, fcmEnabled, Now(), time.Time{}, activateCode)
+				authtx := srv.Auth().Begin()
+				defer authtx.Rollback()
+				qryArgs := sqlh.NewArgs(0)
+				qry := qryInsert(qryArgs, auth)
+				_, err := authtx.Exec(qry, qryArgs.Is()...)
 				if err != nil {
 					mySqlErr, ok := err.(*mysql.MySQLError)
-					app.BadReqIf(ok && mySqlErr.Number == 1062, "email or handle already registered")
+					app.BadReqIf(ok && mySqlErr.Number == 1062, "email already registered")
 					PanicOn(err)
 				}
-				pwdtx := srv.Pwd().Begin()
-				defer pwdtx.Rollback()
-				setPwd(tlbx, pwdtx, id, args.Pwd, args.ConfirmPwd)
-				sendActivateEmail(srv, args.Email, fromEmail, Strf(activateFmtLink, url.QueryEscape(args.Email), activateCode), args.Handle)
-				usrtx.Commit()
-				pwdtx.Commit()
+				appTx := c.OnRegister(tlbx, auth.ID, args.AppData)
+				defer appTx.Rollback()
+				appTx.Do()
+				sendActivateEmail(srv, args.Email, fromEmail, Strf(activateFmtLink, url.QueryEscape(args.Email), auth.ActivateCode))
+				authtx.Commit()
+				appTx.Commit()
 				return nil
 			},
 		},
@@ -142,16 +132,16 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.ResendActivateLink)
+				args := a.(*auth.ResendActivateLink)
 				srv := service.Get(tlbx)
-				tx := srv.User().Begin()
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
-				fullUser := getAuth(tx, &args.Email, nil)
+				auth := getAuth(tx, &args.Email, nil)
 				tx.Commit()
-				if fullUser == nil || fullUser.ActivateCode == nil {
+				if auth == nil || auth.ActivateCode == nil {
 					return nil
 				}
-				sendActivateEmail(srv, args.Email, fromEmail, Strf(activateFmtLink, url.QueryEscape(args.Email), *fullUser.ActivateCode), fullUser.Handle)
+				sendActivateEmail(srv, args.Email, fromEmail, Strf(activateFmtLink, url.QueryEscape(args.Email), *auth.ActivateCode))
 				return nil
 			},
 		},
@@ -174,19 +164,19 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.Activate)
+				args := a.(*auth.Activate)
 				srv := service.Get(tlbx)
-				tx := srv.User().Begin()
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
-				user := getAuth(tx, &args.Email, nil)
-				app.BadReqIf(*user.ActivateCode != args.Code, "")
-				now := Now()
-				user.ActivatedOn = now
-				user.ActivateCode = nil
-				updateAuth(tx, user)
-				if onActivate != nil {
-					onActivate(tlbx, &auth.User)
-				}
+				auth := getAuth(tx, &args.Email, nil)
+				app.BadReqIf(*auth.ActivateCode != args.Code, "")
+				auth.IsActivated = true
+				auth.ActivateCode = nil
+				updateAuth(tx, auth)
+				appTx := c.OnActivate(tlbx, auth.ID)
+				defer appTx.Rollback()
+				appTx.Do()
+				appTx.Commit()
 				tx.Commit()
 				return nil
 			},
@@ -209,20 +199,20 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.ChangeEmail)
+				args := a.(*auth.ChangeEmail)
 				args.NewEmail = StrTrimWS(args.NewEmail)
 				validate.Str("email", args.NewEmail, tlbx, 0, emailMaxLen, emailRegex)
 				srv := service.Get(tlbx)
-				me := sessionGet(tlbx)
+				me := me.AuthedGet(tlbx)
 				changeEmailCode := crypt.UrlSafeString(250)
-				tx := srv.User().Begin()
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
-				existingUser := getAuth(tx, &args.NewEmail, nil)
-				app.BadReqIf(existingUser != nil, "email already registered")
-				fullUser := getAuth(tx, nil, &me)
-				fullUser.NewEmail = &args.NewEmail
-				fullUser.ChangeEmailCode = &changeEmailCode
-				updateAuth(tx, fullUser)
+				existingAuth := getAuth(tx, &args.NewEmail, nil)
+				app.BadReqIf(existingAuth != nil, "email already registered")
+				auth := getAuth(tx, nil, &me)
+				auth.NewEmail = &args.NewEmail
+				auth.ChangeEmailCode = &changeEmailCode
+				updateAuth(tx, auth)
 				tx.Commit()
 				sendConfirmChangeEmailEmail(srv, args.NewEmail, fromEmail, Strf(confirmChangeEmailFmtLink, me, changeEmailCode))
 				return nil
@@ -245,12 +235,12 @@ func New(
 			},
 			Handler: func(tlbx app.Tlbx, _ interface{}) interface{} {
 				srv := service.Get(tlbx)
-				me := sessionGet(tlbx)
-				tx := srv.User().Begin()
+				me := me.AuthedGet(tlbx)
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
-				fullUser := getAuth(tx, nil, &me)
+				auth := getAuth(tx, nil, &me)
 				tx.Commit()
-				sendConfirmChangeEmailEmail(srv, *fullUser.NewEmail, fromEmail, Strf(confirmChangeEmailFmtLink, me, *fullUser.ChangeEmailCode))
+				sendConfirmChangeEmailEmail(srv, *auth.NewEmail, fromEmail, Strf(confirmChangeEmailFmtLink, me, *auth.ChangeEmailCode))
 				return nil
 			},
 		},
@@ -273,16 +263,16 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.ConfirmChangeEmail)
+				args := a.(*auth.ConfirmChangeEmail)
 				srv := service.Get(tlbx)
-				tx := srv.User().Begin()
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
-				user := getAuth(tx, nil, &args.Me)
-				app.BadReqIf(*user.ChangeEmailCode != args.Code, "")
-				user.ChangeEmailCode = nil
-				user.Email = *user.NewEmail
-				user.NewEmail = nil
-				updateAuth(tx, user)
+				auth := getAuth(tx, nil, &args.Me)
+				app.BadReqIf(*auth.ChangeEmailCode != args.Code, "")
+				auth.ChangeEmailCode = nil
+				auth.Email = *auth.NewEmail
+				auth.NewEmail = nil
+				updateAuth(tx, auth)
 				tx.Commit()
 				return nil
 			},
@@ -305,25 +295,22 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.ResetPwd)
+				args := a.(*auth.ResetPwd)
 				srv := service.Get(tlbx)
-				tx := srv.User().Begin()
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
-				user := getAuth(tx, &args.Email, nil)
-				if user != nil {
+				auth := getAuth(tx, &args.Email, nil)
+				if auth != nil {
 					now := Now()
-					if user.LastPwdResetOn != nil {
-						mustWaitDur := (10 * time.Minute) - Now().Sub(*user.LastPwdResetOn)
+					if auth.LastPwdResetOn != nil {
+						mustWaitDur := (10 * time.Minute) - Now().Sub(*auth.LastPwdResetOn)
 						app.BadReqIf(mustWaitDur > 0, "must wait %d seconds before reseting pwd again", int64(math.Ceil(mustWaitDur.Seconds())))
 					}
-					user.LastPwdResetOn = &now
-					updateAuth(tx, user)
-					pwdtx := srv.Pwd().Begin()
-					defer pwdtx.Rollback()
+					auth.LastPwdResetOn = &now
 					newPwd := `$aA1` + crypt.UrlSafeString(12)
-					setPwd(tlbx, pwdtx, user.ID, newPwd, newPwd)
+					auth.setPwd(tlbx, newPwd)
+					updateAuth(tx, auth)
 					sendResetPwdEmail(srv, args.Email, fromEmail, newPwd)
-					pwdtx.Commit()
 				}
 				tx.Commit()
 				return nil
@@ -348,15 +335,16 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.SetPwd)
+				args := a.(*auth.ChangePwd)
 				srv := service.Get(tlbx)
-				me := sessionGet(tlbx)
-				pwd := getPwd(srv, me)
-				app.BadReqIf(!bytes.Equal(crypt.ScryptKey([]byte(args.OldPwd), pwd.Salt, pwd.N, pwd.R, pwd.P, scryptKeyLen), pwd.Pwd), "old pwd does not match")
-				pwdtx := srv.Pwd().Begin()
-				defer pwdtx.Rollback()
-				setPwd(tlbx, pwdtx, me, args.NewPwd, args.ConfirmNewPwd)
-				pwdtx.Commit()
+				me := me.AuthedGet(tlbx)
+				tx := srv.Auth().Begin()
+				defer tx.Rollback()
+				auth := getAuth(tx, nil, &me)
+				app.BadReqIf(!bytes.Equal(crypt.ScryptKey([]byte(args.OldPwd), auth.Salt, auth.N, auth.R, auth.P, scryptKeyLen), auth.Pwd), "old pwd does not match")
+				auth.setPwd(tlbx, args.NewPwd)
+				updateAuth(tx, auth)
+				tx.Commit()
 				return nil
 			},
 		},
@@ -378,18 +366,22 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.Delete)
+				args := a.(*auth.Delete)
 				srv := service.Get(tlbx)
-				m := sessionGet(tlbx)
-				pwd := getPwd(srv, m)
-				app.BadReqIf(!bytes.Equal(pwd.Pwd, crypt.ScryptKey([]byte(args.Pwd), pwd.Salt, pwd.N, pwd.R, pwd.P, scryptKeyLen)), "incorrect pwd")
-				tx := srv.User().Begin()
+				m := me.AuthedGet(tlbx)
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
-				_, err := tx.Exec(`DELETE FROM auths WHERE id=?`, m)
-				if onDelete != nil {
-					onDelete(tlbx, m)
-				}
-				sessionDel(tlbx)
+				auth := getAuth(tx, nil, &m)
+				app.BadReqIf(!bytes.Equal(auth.Pwd, crypt.ScryptKey([]byte(args.Pwd), auth.Salt, auth.N, auth.R, auth.P, scryptKeyLen)), "incorrect pwd")
+				qryArgs := sqlh.NewArgs(0)
+				qry := qryDel(qryArgs, m)
+				_, err := tx.Exec(qry, qryArgs.Is()...)
+				PanicOn(err)
+				appTx := c.OnDelete(tlbx, m)
+				defer appTx.Rollback()
+				appTx.Do()
+				appTx.Commit()
+				me.Del(tlbx)
 				tx.Commit()
 				return nil
 			},
@@ -410,34 +402,29 @@ func New(
 				}
 			},
 			GetExampleResponse: func() interface{} {
-				return &auth.User{
-					ID: app.ExampleID(),
-				}
+				return app.ExampleID()
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				emailOrPwdMismatch := func(condition bool) {
-					app.ReturnIf(condition, http.StatusNotFound, "email and/or pwd are not valid")
-				}
-				args := a.(*user.Login)
+				args := a.(*auth.Login)
 				validate.Str("email", args.Email, tlbx, 0, emailMaxLen, emailRegex)
 				validate.Str("pwd", args.Pwd, tlbx, pwdMinLen, pwdMaxLen, pwdRegexs...)
 				srv := service.Get(tlbx)
-				tx := srv.User().Begin()
+				tx := srv.Auth().Begin()
 				defer tx.Rollback()
-				user := getAuth(tx, &args.Email, nil)
-				emailOrPwdMismatch(user == nil)
-				pwd := getPwd(srv, user.ID)
-				emailOrPwdMismatch(!bytes.Equal(pwd.Pwd, crypt.ScryptKey([]byte(args.Pwd), pwd.Salt, pwd.N, pwd.R, pwd.P, scryptKeyLen)))
+				auth := getAuth(tx, &args.Email, nil)
+				app.ReturnIf(auth == nil || !bytes.Equal(auth.Pwd, crypt.ScryptKey([]byte(args.Pwd), auth.Salt, auth.N, auth.R, auth.P, scryptKeyLen)), http.StatusNotFound, "email and/or pwd are not valid")
 				// if encryption params have changed re encrypt on successful login
-				if len(pwd.Salt) != scryptSaltLen || len(pwd.Pwd) != scryptKeyLen || pwd.N != scryptN || pwd.R != scryptR || pwd.P != scryptP {
-					pwdtx := srv.Pwd().Begin()
-					defer pwdtx.Rollback()
-					setPwd(tlbx, pwdtx, user.ID, args.Pwd, args.Pwd)
-					pwdtx.Commit()
+				if len(auth.Salt) != scryptSaltLen ||
+					len(auth.Pwd) != scryptKeyLen ||
+					auth.N != scryptN ||
+					auth.R != scryptR ||
+					auth.P != scryptP {
+					auth.setPwd(tlbx, args.Pwd)
 				}
+				updateAuth(tx, auth)
 				tx.Commit()
-				sessionSet(tlbx, user.ID)
-				return &auth.User
+				me.AuthedSet(tlbx, auth.ID)
+				return &auth.ID
 			},
 		},
 		{
@@ -456,25 +443,14 @@ func New(
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, _ interface{}) interface{} {
-				if sessionExists(tlbx) {
-					m := sessionGet(tlbx)
-					srv := service.Get(tlbx)
-					tokens := make([]string, 0, 5)
-					tx := srv.User().Begin()
-					defer tx.Rollback()
-					tx.Query(func(rows isql.Rows) {
-						for rows.Next() {
-							token := ""
-							PanicOn(rows.Scan(&token))
-							tokens = append(tokens, token)
-						}
-					}, `SELECT DISTINCT token FROM fcmTokens WHERE user=?`, m)
-					_, err := tx.Exec(`DELETE FROM fcmTokens WHERE user=?`, m)
-					PanicOn(err)
-					srv.FCM().RawAsyncSend("logout", tokens, map[string]string{}, 0)
-					tx.Commit()
-					sessionDel(tlbx)
+				if me.AuthedExists(tlbx) {
+					m := me.AuthedGet(tlbx)
+					appTx := c.OnLogout(tlbx, m)
+					defer appTx.Rollback()
+					appTx.Do()
+					appTx.Commit()
 				}
+				me.Del(tlbx)
 				return nil
 			},
 		},
@@ -497,15 +473,15 @@ func New(
 				}
 			},
 			Handler: func(tlbx app.Tlbx, _ interface{}) interface{} {
-				if !sessionExists(tlbx) {
+				if !me.AuthedExists(tlbx) {
 					return nil
 				}
-				me := sessionGet(tlbx)
+				me := me.AuthedGet(tlbx)
 				tx := service.Get(tlbx).Auth().Begin()
 				defer tx.Rollback()
-				user := getAuth(tx, nil, &me)
+				auth := getAuth(tx, nil, &me)
 				tx.Commit()
-				return &auth.User
+				return &auth.Me
 			},
 		},
 	}
@@ -529,13 +505,9 @@ var (
 	scryptKeyLen  = 256
 )
 
-func sendActivateEmail(srv service.Layer, sendTo, from, link string, handle *string) {
+func sendActivateEmail(srv service.Layer, sendTo, from, link string) {
 	html := `<p>Thank you for registering.</p><p>Click this link to activate your account:</p><p><a href="` + link + `">Activate</a></p><p>If you didn't register for this account you can simply ignore this email.</p>`
 	txt := "Thank you for registering.\nClick this link to activate your account:\n\n" + link + "\n\nIf you didn't register for this account you can simply ignore this email."
-	if handle != nil {
-		html = Strf("Hi %s,\n\n", *handle) + html
-		txt = Strf("Hi %s,\n\n", *handle) + txt
-	}
 	srv.Email().MustSend([]string{sendTo}, from, "Activate", html, txt)
 }
 
@@ -551,8 +523,9 @@ func sendResetPwdEmail(srv service.Layer, sendTo, from, newPwd string) {
 
 type fullAuth struct {
 	auth.Me
+	IsActivated     bool
 	RegisteredOn    time.Time
-	ActivatedOn     time.Time
+	LastLoggedInOn  time.Time
 	NewEmail        *string
 	ActivateCode    *string
 	ChangeEmailCode *string
@@ -566,19 +539,24 @@ type fullAuth struct {
 
 func getAuth(tx sql.Tx, email *string, id *ID) *fullAuth {
 	PanicIf(email == nil && id == nil, "one of email or id must not be nil")
-	var args *sqlh.Args
-	qry := qryGet(args, email, id)
-	row := tx.QueryRow(qry, args.Is()...)
+	qryArgs := sqlh.NewArgs(0)
+	qry := qryGet(qryArgs, email, id)
+	row := tx.QueryRow(qry, qryArgs.Is()...)
 	res := &fullAuth{}
 	err := row.Scan(
 		&res.ID,
 		&res.Email,
+		&res.IsActivated,
 		&res.RegisteredOn,
-		&res.ActivatedOn,
 		&res.NewEmail,
 		&res.ActivateCode,
 		&res.ChangeEmailCode,
-		&res.LastPwdResetOn)
+		&res.LastPwdResetOn,
+		&res.Salt,
+		&res.Pwd,
+		&res.N,
+		&res.R,
+		&res.P)
 	if err == isql.ErrNoRows {
 		return nil
 	}
@@ -587,8 +565,17 @@ func getAuth(tx sql.Tx, email *string, id *ID) *fullAuth {
 }
 
 func updateAuth(tx sql.Tx, auth *fullAuth) {
-	var args *sqlh.Args
-	qry := qryUpdate(args, auth)
-	_, err := tx.Exec(qry, args.Is()...)
+	qryArgs := sqlh.NewArgs(0)
+	qry := qryUpdate(qryArgs, auth)
+	_, err := tx.Exec(qry, qryArgs.Is()...)
 	PanicOn(err)
+}
+
+func (a *fullAuth) setPwd(tlbx app.Tlbx, pwd string) {
+	validate.Str("pwd", pwd, tlbx, pwdMinLen, pwdMaxLen, pwdRegexs...)
+	a.Salt = crypt.Bytes(scryptSaltLen)
+	a.N = scryptN
+	a.R = scryptR
+	a.P = scryptP
+	a.Pwd = crypt.ScryptKey([]byte(pwd), a.Salt, a.N, a.R, a.P, scryptKeyLen)
 }

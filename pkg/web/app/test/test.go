@@ -12,18 +12,13 @@ import (
 	"github.com/0xor1/tlbx/pkg/iredis"
 	"github.com/0xor1/tlbx/pkg/isql"
 	"github.com/0xor1/tlbx/pkg/log"
-	"github.com/0xor1/tlbx/pkg/ptr"
 	"github.com/0xor1/tlbx/pkg/store"
 	"github.com/0xor1/tlbx/pkg/web/app"
+	"github.com/0xor1/tlbx/pkg/web/app/auth"
+	"github.com/0xor1/tlbx/pkg/web/app/auth/autheps"
 	"github.com/0xor1/tlbx/pkg/web/app/config"
-	"github.com/0xor1/tlbx/pkg/web/app/ratelimit"
 	"github.com/0xor1/tlbx/pkg/web/app/service"
-	"github.com/0xor1/tlbx/pkg/web/app/service/sql"
 	"github.com/0xor1/tlbx/pkg/web/app/session"
-	"github.com/0xor1/tlbx/pkg/web/app/session/me"
-	"github.com/0xor1/tlbx/pkg/web/app/session/opt"
-	"github.com/0xor1/tlbx/pkg/web/app/user"
-	"github.com/0xor1/tlbx/pkg/web/app/user/usereps"
 )
 
 const (
@@ -48,8 +43,7 @@ type Rig interface {
 	Dan() User
 	// services
 	Cache() iredis.Pool
-	User() isql.ReplicaSet
-	Pwd() isql.ReplicaSet
+	Auth() isql.ReplicaSet
 	Data() isql.ReplicaSet
 	Email() email.Client
 	Store() store.Client
@@ -90,6 +84,7 @@ func (u *testUser) Pwd() string {
 type rig struct {
 	rootHandler http.HandlerFunc
 	unique      string
+	register    func(string, *auth.Register)
 	ali         *testUser
 	bob         *testUser
 	cat         *testUser
@@ -97,8 +92,7 @@ type rig struct {
 	log         log.Log
 	rateLimit   iredis.Pool
 	cache       iredis.Pool
-	user        isql.ReplicaSet
-	pwd         isql.ReplicaSet
+	auth        isql.ReplicaSet
 	data        isql.ReplicaSet
 	email       email.Client
 	store       store.Client
@@ -142,12 +136,8 @@ func (r *rig) Cache() iredis.Pool {
 	return r.cache
 }
 
-func (r *rig) User() isql.ReplicaSet {
-	return r.user
-}
-
-func (r *rig) Pwd() isql.ReplicaSet {
-	return r.pwd
+func (r *rig) Auth() isql.ReplicaSet {
+	return r.auth
 }
 
 func (r *rig) Data() isql.ReplicaSet {
@@ -176,133 +166,41 @@ func (r *rig) Do(req *http.Request) (*http.Response, error) {
 	return rec.Result(), nil
 }
 
-func NewNoRig(
-	config *config.Config,
-	eps []*app.Endpoint,
-	buckets ...string,
-) Rig {
-	return NewRig(
-		config,
-		eps,
-		false,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		false,
-		ratelimit.NoMware,
-		buckets...)
-}
-
-func NewMeRig(
-	config *config.Config,
-	eps []*app.Endpoint,
-	onActivate func(app.Tlbx, *user.User),
-	onDelete func(app.Tlbx, ID),
-	onSetSocials func(app.Tlbx, *user.User) error,
-	validateFcmTopic func(app.Tlbx, IDs) (sql.Tx, error),
-	enableJin bool,
-	buckets ...string,
-) Rig {
-	return NewRig(
-		config,
-		eps,
-		true,
-		me.Exists,
-		me.Set,
-		me.Get,
-		me.Del,
-		onActivate,
-		onDelete,
-		onSetSocials,
-		validateFcmTopic,
-		enableJin,
-		ratelimit.MeMware,
-		buckets...)
-}
-
-func NewOptRig(
-	config *config.Config,
-	eps []*app.Endpoint,
-	onActivate func(app.Tlbx, *user.User),
-	onDelete func(app.Tlbx, ID),
-	onSetSocials func(app.Tlbx, *user.User) error,
-	validateFcmTopic func(app.Tlbx, IDs) (sql.Tx, error),
-	enableJin bool,
-	buckets ...string,
-) Rig {
-	return NewRig(
-		config,
-		eps,
-		true,
-		opt.AuthedExists,
-		opt.AuthedSet,
-		opt.AuthedGet,
-		opt.Del,
-		onActivate,
-		onDelete,
-		onSetSocials,
-		validateFcmTopic,
-		enableJin,
-		ratelimit.OptMware,
-		buckets...)
-}
-
 func NewRig(
 	config *config.Config,
 	eps []*app.Endpoint,
-	useUsers bool,
-	sessionExists func(app.Tlbx) bool,
-	sessionSet func(app.Tlbx, ID),
-	sessionGet func(app.Tlbx) ID,
-	sessionDel func(app.Tlbx),
-	onActivate func(app.Tlbx, *user.User),
-	onDelete func(app.Tlbx, ID),
-	onSetSocials func(app.Tlbx, *user.User) error,
-	validateFcmTopic func(app.Tlbx, IDs) (sql.Tx, error),
-	enableJin bool,
 	rateLimitMware func(iredis.Pool, ...int) func(app.Tlbx),
-	buckets ...string,
+	buckets []string,
+	useAuth bool,
+	register func(name string, reg *auth.Register),
+	configAuth ...func(*autheps.Config),
 ) Rig {
 	r := &rig{
 		unique:    Strf("%d", os.Getpid()),
+		register:  register,
 		log:       config.Log,
 		rateLimit: config.Redis.RateLimit,
 		cache:     config.Redis.Cache,
 		email:     config.Email,
 		store:     config.Store,
 		fcm:       config.FCM,
-		user:      config.SQL.User,
-		pwd:       config.SQL.Pwd,
+		auth:      config.SQL.Auth,
 		data:      config.SQL.Data,
-		useAuth:   useUsers,
+		useAuth:   useAuth,
 	}
 
 	for _, bucket := range buckets {
 		r.store.MustCreateBucket(bucket, "private")
 	}
 
-	if useUsers {
-		r.store.MustCreateBucket(usereps.AvatarBucket, "public_read")
+	if useAuth {
 		eps = append(
 			eps,
-			usereps.New(
+			autheps.New(
 				config.App.FromEmail,
 				config.App.ActivateFmtLink,
 				config.App.ConfirmChangeEmailFmtLink,
-				sessionExists,
-				sessionSet,
-				sessionGet,
-				sessionDel,
-				onActivate,
-				onDelete,
-				onSetSocials,
-				validateFcmTopic,
-				enableJin)...)
+				configAuth...)...)
 	}
 	Go(func() {
 		app.Run(func(c *app.Config) {
@@ -313,7 +211,7 @@ func NewRig(
 					config.Web.Session.EncrKey32s,
 					config.Web.Session.Secure),
 				rateLimitMware(r.rateLimit, 1000000),
-				service.Mware(r.cache, r.user, r.pwd, r.data, r.email, r.store, r.fcm),
+				service.Mware(r.cache, r.auth, r.data, r.email, r.store, r.fcm),
 			}
 			c.Endpoints = eps
 			c.Serve = func(h http.HandlerFunc) {
@@ -333,46 +231,47 @@ func NewRig(
 
 func (r *rig) CleanUp() {
 	if r.useAuth {
-		(&user.Delete{
+		(&auth.Delete{
 			Pwd: r.Ali().Pwd(),
 		}).MustDo(r.Ali().Client())
-		(&user.Delete{
+		(&auth.Delete{
 			Pwd: r.Bob().Pwd(),
 		}).MustDo(r.Bob().Client())
-		(&user.Delete{
+		(&auth.Delete{
 			Pwd: r.Cat().Pwd(),
 		}).MustDo(r.Cat().Client())
-		(&user.Delete{
+		(&auth.Delete{
 			Pwd: r.Dan().Pwd(),
 		}).MustDo(r.Dan().Client())
 	}
 }
 
-func (r *rig) createUser(handleSuffix, emailSuffix, pwd string) *testUser {
-	email := Strf("%s%s%s", handleSuffix, emailSuffix, r.unique)
+func (r *rig) createUser(handle, emailSuffix, pwd string) *testUser {
+	email := Strf("%s%s%s", handle, emailSuffix, r.unique)
 	c := r.NewClient()
 	if r.useAuth {
-		(&user.Register{
-			Handle:     ptr.String(Strf("%s%s", handleSuffix, r.unique)),
-			Alias:      ptr.String(handleSuffix),
-			Email:      email,
-			Pwd:        pwd,
-			ConfirmPwd: pwd,
-		}).MustDo(c)
+		reg := &auth.Register{
+			Email: email,
+			Pwd:   pwd,
+		}
+		if r.register != nil {
+			r.register(handle, reg)
+		}
+		(reg).MustDo(c)
 
 		var code string
-		row := r.User().Primary().QueryRow(`SELECT activateCode FROM users WHERE email=?`, email)
+		row := r.Auth().Primary().QueryRow(`SELECT activateCode FROM auths WHERE email=?`, email)
 		PanicOn(row.Scan(&code))
 
-		(&user.Activate{
+		(&auth.Activate{
 			Email: email,
 			Code:  code,
 		}).MustDo(c)
 
-		id := (&user.Login{
+		id := *(&auth.Login{
 			Email: email,
 			Pwd:   pwd,
-		}).MustDo(c).ID
+		}).MustDo(c)
 
 		return &testUser{
 			client: c,

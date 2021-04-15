@@ -1,8 +1,8 @@
-DROP DATABASE IF EXISTS auth;
-CREATE DATABASE auth
+DROP DATABASE IF EXISTS todo_auth;
+CREATE DATABASE todo_auth
 CHARACTER SET = 'utf8mb4'
 COLLATE = 'utf8mb4_general_ci';
-USE auth;
+USE todo_auth;
 
 DROP TABLE IF EXISTS auths;
 CREATE TABLE auths(
