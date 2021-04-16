@@ -9,8 +9,10 @@ CREATE TABLE games (
     id BINARY(16) NOT NULL,
     type VARCHAR(20) NOT NULL,
     updatedOn DATETIME(3) NOT NULL,
+    isActive BOOLEAN NOT NULL,
     serialized VARBINARY(5000) NOT NULL,
     PRIMARY KEY id (id, type),
+    UNIQUE INDEX isActive (isActive, id, type),
     UNIQUE INDEX updatedOn (updatedOn, id, type)
 );
 
@@ -18,7 +20,7 @@ DROP TABLE IF EXISTS players;
 CREATE TABLE players (
     id BINARY(16) NOT NULL,
     game BINARY(16) NOT NULL,
-    PRIMARY KEY id (id),
+    PRIMARY KEY id (id, game),
     UNIQUE INDEX game (game, id),
     FOREIGN KEY (game) REFERENCES games (id) ON DELETE CASCADE
 );

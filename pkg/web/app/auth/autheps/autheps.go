@@ -28,25 +28,21 @@ import (
 type Config struct {
 	AppDataDefault func() interface{}
 	AppDataExample func() interface{}
-	OnRegister     func(tlbx app.Tlbx, me ID, appData interface{}) sql.DoTx
-	OnActivate     func(tlbx app.Tlbx, me ID) sql.DoTx
-	OnDelete       func(tlbx app.Tlbx, me ID) sql.DoTx
-	OnLogout       func(tlbx app.Tlbx, me ID) sql.DoTx
+	OnRegister     func(tlbx app.Tlbx, me ID, appData interface{}, txAdder sql.DoTxAdder)
+	OnActivate     func(tlbx app.Tlbx, me ID, txAdder sql.DoTxAdder)
+	OnDelete       func(tlbx app.Tlbx, me ID, txAdder sql.DoTxAdder)
+	OnLogout       func(tlbx app.Tlbx, me ID, txAdder sql.DoTxAdder)
 }
 
 func config(configs ...func(*Config)) *Config {
-	noopDoTx := func(app.Tlbx, ID) sql.DoTx {
-		return &sql.NoopDoTx{}
-	}
+	noopDoTx := func(_ app.Tlbx, _ ID, _ sql.DoTxAdder) {}
 	c := &Config{
 		AppDataDefault: func() interface{} { return nil },
 		AppDataExample: func() interface{} { return nil },
-		OnRegister: func(tlbx app.Tlbx, id ID, appData interface{}) sql.DoTx {
-			return noopDoTx(tlbx, id)
-		},
-		OnActivate: noopDoTx,
-		OnDelete:   noopDoTx,
-		OnLogout:   noopDoTx,
+		OnRegister:     func(_ app.Tlbx, _ ID, _ interface{}, _ sql.DoTxAdder) {},
+		OnActivate:     noopDoTx,
+		OnDelete:       noopDoTx,
+		OnLogout:       noopDoTx,
 	}
 	for _, config := range configs {
 		config(c)
@@ -90,7 +86,9 @@ func New(
 				validate.Str("email", args.Email, tlbx, 0, emailMaxLen, emailRegex)
 				auth := &fullAuth{}
 				auth.setPwd(tlbx, args.Pwd)
-				auth.Me.ID = tlbx.NewID()
+				// incase they're already doing stuff as an anon user and want to
+				// register to save their session state, use the anon session id
+				auth.Me.ID = me.Get(tlbx).ID()
 				auth.Me.Email = args.Email
 				auth.ActivateCode = ptr.String(crypt.UrlSafeString(250))
 				auth.RegisteredOn = Now()
@@ -105,7 +103,8 @@ func New(
 					app.BadReqIf(ok && mySqlErr.Number == 1062, "email already registered")
 					PanicOn(err)
 				}
-				appTx := c.OnRegister(tlbx, auth.ID, args.AppData)
+				appTx := sql.NewDoTxs()
+				c.OnRegister(tlbx, auth.ID, args.AppData, appTx)
 				defer appTx.Rollback()
 				appTx.Do()
 				sendActivateEmail(srv, args.Email, fromEmail, Strf(activateFmtLink, url.QueryEscape(args.Email), auth.ActivateCode))
@@ -173,7 +172,8 @@ func New(
 				auth.IsActivated = true
 				auth.ActivateCode = nil
 				updateAuth(tx, auth)
-				appTx := c.OnActivate(tlbx, auth.ID)
+				appTx := sql.NewDoTxs()
+				c.OnActivate(tlbx, auth.ID, appTx)
 				defer appTx.Rollback()
 				appTx.Do()
 				appTx.Commit()
@@ -377,7 +377,8 @@ func New(
 				qry := qryDel(qryArgs, m)
 				_, err := tx.Exec(qry, qryArgs.Is()...)
 				PanicOn(err)
-				appTx := c.OnDelete(tlbx, m)
+				appTx := sql.NewDoTxs()
+				c.OnDelete(tlbx, m, appTx)
 				defer appTx.Rollback()
 				appTx.Do()
 				appTx.Commit()
@@ -445,7 +446,8 @@ func New(
 			Handler: func(tlbx app.Tlbx, _ interface{}) interface{} {
 				if me.AuthedExists(tlbx) {
 					m := me.AuthedGet(tlbx)
-					appTx := c.OnLogout(tlbx, m)
+					appTx := sql.NewDoTxs()
+					c.OnLogout(tlbx, m, appTx)
 					defer appTx.Rollback()
 					appTx.Do()
 					appTx.Commit()

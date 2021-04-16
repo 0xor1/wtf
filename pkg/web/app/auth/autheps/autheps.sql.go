@@ -8,7 +8,7 @@ package autheps
 import . "github.com/0xor1/tlbx/pkg/core"
 
 //line autheps.sql:2
-import "github.com/0xor1/tlbx/pkg/web/app/sql"
+import sqlh "github.com/0xor1/tlbx/pkg/web/app/sql"
 
 //line autheps.sql:4
 import (
@@ -24,11 +24,11 @@ var (
 )
 
 //line autheps.sql:4
-func streamqryInsert(qw422016 *qt422016.Writer, args *sql.Args, auth *fullAuth) {
+func streamqryInsert(qw422016 *qt422016.Writer, args *sqlh.Args, auth *fullAuth) {
 //line autheps.sql:5
 	qw422016.N().S(`INSERT INTO auths( id, email, isActivated, registeredOn, newEmail, activateCode, changeEmailCode, lastPwdResetOn, salt, pwd, n, r, p ) VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? ) `)
 //line autheps.sql:37
-	*args = *sql.NewArgs(13)
+	*args = *sqlh.NewArgs(13)
 	args.Append(
 		auth.ID,
 		auth.Email,
@@ -49,7 +49,7 @@ func streamqryInsert(qw422016 *qt422016.Writer, args *sql.Args, auth *fullAuth) 
 }
 
 //line autheps.sql:54
-func writeqryInsert(qq422016 qtio422016.Writer, args *sql.Args, auth *fullAuth) {
+func writeqryInsert(qq422016 qtio422016.Writer, args *sqlh.Args, auth *fullAuth) {
 //line autheps.sql:54
 	qw422016 := qt422016.AcquireWriter(qq422016)
 //line autheps.sql:54
@@ -60,7 +60,7 @@ func writeqryInsert(qq422016 qtio422016.Writer, args *sql.Args, auth *fullAuth) 
 }
 
 //line autheps.sql:54
-func qryInsert(args *sql.Args, auth *fullAuth) string {
+func qryInsert(args *sqlh.Args, auth *fullAuth) string {
 //line autheps.sql:54
 	qb422016 := qt422016.AcquireByteBuffer()
 //line autheps.sql:54
@@ -75,10 +75,10 @@ func qryInsert(args *sql.Args, auth *fullAuth) string {
 }
 
 //line autheps.sql:56
-func streamqryGet(qw422016 *qt422016.Writer, args *sql.Args, email *string, id *ID) {
+func streamqryGet(qw422016 *qt422016.Writer, args *sqlh.Args, email *string, id *ID) {
 //line autheps.sql:59
 	PanicIf(email == nil && id == nil, "one of email or id must not be nil")
-	*args = *sql.NewArgs(1)
+	*args = *sqlh.NewArgs(1)
 
 //line autheps.sql:60
 	qw422016.N().S(`SELECT id, email, isActivated, registeredOn, newEmail, activateCode, changeEmailCode, lastPwdResetOn, salt, pwd, n, r, p FROM auths WHERE `)
@@ -104,7 +104,7 @@ func streamqryGet(qw422016 *qt422016.Writer, args *sql.Args, email *string, id *
 }
 
 //line autheps.sql:86
-func writeqryGet(qq422016 qtio422016.Writer, args *sql.Args, email *string, id *ID) {
+func writeqryGet(qq422016 qtio422016.Writer, args *sqlh.Args, email *string, id *ID) {
 //line autheps.sql:86
 	qw422016 := qt422016.AcquireWriter(qq422016)
 //line autheps.sql:86
@@ -115,7 +115,7 @@ func writeqryGet(qq422016 qtio422016.Writer, args *sql.Args, email *string, id *
 }
 
 //line autheps.sql:86
-func qryGet(args *sql.Args, email *string, id *ID) string {
+func qryGet(args *sqlh.Args, email *string, id *ID) string {
 //line autheps.sql:86
 	qb422016 := qt422016.AcquireByteBuffer()
 //line autheps.sql:86
@@ -130,11 +130,11 @@ func qryGet(args *sql.Args, email *string, id *ID) string {
 }
 
 //line autheps.sql:88
-func streamqryUpdate(qw422016 *qt422016.Writer, args *sql.Args, auth *fullAuth) {
+func streamqryUpdate(qw422016 *qt422016.Writer, args *sqlh.Args, auth *fullAuth) {
 //line autheps.sql:89
 	qw422016.N().S(`UPDATE auths SET email=?, isActivated=?, registeredOn=?, newEmail=?, activateCode=?, changeEmailCode=?, lastPwdResetOn=?, salt=?, pwd=?, n=?, r=?, p=? WHERE id=? `)
 //line autheps.sql:105
-	*args = *sql.NewArgs(13)
+	*args = *sqlh.NewArgs(13)
 	args.Append(
 		auth.Email,
 		auth.IsActivated,
@@ -155,7 +155,7 @@ func streamqryUpdate(qw422016 *qt422016.Writer, args *sql.Args, auth *fullAuth) 
 }
 
 //line autheps.sql:122
-func writeqryUpdate(qq422016 qtio422016.Writer, args *sql.Args, auth *fullAuth) {
+func writeqryUpdate(qq422016 qtio422016.Writer, args *sqlh.Args, auth *fullAuth) {
 //line autheps.sql:122
 	qw422016 := qt422016.AcquireWriter(qq422016)
 //line autheps.sql:122
@@ -166,7 +166,7 @@ func writeqryUpdate(qq422016 qtio422016.Writer, args *sql.Args, auth *fullAuth) 
 }
 
 //line autheps.sql:122
-func qryUpdate(args *sql.Args, auth *fullAuth) string {
+func qryUpdate(args *sqlh.Args, auth *fullAuth) string {
 //line autheps.sql:122
 	qb422016 := qt422016.AcquireByteBuffer()
 //line autheps.sql:122
@@ -181,18 +181,18 @@ func qryUpdate(args *sql.Args, auth *fullAuth) string {
 }
 
 //line autheps.sql:124
-func streamqryDel(qw422016 *qt422016.Writer, args *sql.Args, me ID) {
+func streamqryDel(qw422016 *qt422016.Writer, args *sqlh.Args, me ID) {
 //line autheps.sql:125
 	qw422016.N().S(`DELETE FROM auths WHERE id=? `)
 //line autheps.sql:129
-	*args = *sql.NewArgs(1)
+	*args = *sqlh.NewArgs(1)
 	args.Append(me)
 
 //line autheps.sql:133
 }
 
 //line autheps.sql:133
-func writeqryDel(qq422016 qtio422016.Writer, args *sql.Args, me ID) {
+func writeqryDel(qq422016 qtio422016.Writer, args *sqlh.Args, me ID) {
 //line autheps.sql:133
 	qw422016 := qt422016.AcquireWriter(qq422016)
 //line autheps.sql:133
@@ -203,7 +203,7 @@ func writeqryDel(qq422016 qtio422016.Writer, args *sql.Args, me ID) {
 }
 
 //line autheps.sql:133
-func qryDel(args *sql.Args, me ID) string {
+func qryDel(args *sqlh.Args, me ID) string {
 //line autheps.sql:133
 	qb422016 := qt422016.AcquireByteBuffer()
 //line autheps.sql:133

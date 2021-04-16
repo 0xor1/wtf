@@ -11,7 +11,6 @@ import (
 	. "github.com/0xor1/tlbx/pkg/core"
 	"github.com/0xor1/tlbx/pkg/web/app"
 	"github.com/0xor1/tlbx/pkg/web/app/ratelimit"
-	"github.com/0xor1/tlbx/pkg/web/app/session/me"
 	"github.com/0xor1/tlbx/pkg/web/app/test"
 	"github.com/logrusorgru/aurora"
 	"github.com/stretchr/testify/assert"
@@ -22,17 +21,10 @@ func Everything(t *testing.T) {
 	r := test.NewRig(
 		config.Get(),
 		append(game.Eps, blockerseps.Eps...),
-		false,
-		me.AuthedExists,
-		me.SetAuthed,
-		me.GetAuthed,
-		me.Del,
-		nil,
-		nil,
-		nil,
+		ratelimit.MeMware,
 		nil,
 		false,
-		ratelimit.MeMware)
+		nil)
 	defer r.CleanUp()
 
 	g2 := playGame(a, []*app.Client{
@@ -110,6 +102,7 @@ func playGame(a *assert.Assertions, players []*app.Client) *blockers.Game {
 		MustDo(players[0])
 	a.NotNil(g)
 	id = g.ID
+	Println(id, g.IsActive())
 
 	// test active game
 	active = (&game.Active{}).

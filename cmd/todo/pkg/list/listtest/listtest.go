@@ -11,21 +11,24 @@ import (
 	"github.com/0xor1/tlbx/pkg/field"
 	"github.com/0xor1/tlbx/pkg/ptr"
 	"github.com/0xor1/tlbx/pkg/web/app"
+	"github.com/0xor1/tlbx/pkg/web/app/auth/autheps"
+	"github.com/0xor1/tlbx/pkg/web/app/ratelimit"
 	"github.com/0xor1/tlbx/pkg/web/app/test"
-	"github.com/0xor1/tlbx/pkg/web/app/user/usereps"
 	"github.com/stretchr/testify/assert"
 )
 
 func Everything(t *testing.T) {
 	a := assert.New(t)
-	r := test.NewMeRig(
+	r := test.NewRig(
 		config.Get(),
 		listeps.Eps,
+		ratelimit.MeMware,
 		nil,
-		listeps.OnDelete,
-		usereps.NopOnSetSocials,
+		true,
 		nil,
-		false)
+		func(c *autheps.Config) {
+			c.OnDelete = listeps.OnDelete
+		})
 	defer r.CleanUp()
 
 	name1 := "Test list 1"

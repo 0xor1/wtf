@@ -32,10 +32,10 @@ ON SCHEDULE EVERY 24 HOUR
 STARTS CURRENT_TIMESTAMP + INTERVAL 1 HOUR
 DO DELETE FROM auths WHERE isActivated=0 AND registeredOn < DATE_SUB(NOW(), INTERVAL 7 DAY);
 
-DROP USER IF EXISTS 'auth'@'%';
-CREATE USER 'auth'@'%' IDENTIFIED BY 'C0-Mm-0n-Auth';
-GRANT SELECT ON auth.* TO 'auth'@'%';
-GRANT INSERT ON auth.* TO 'auth'@'%';
-GRANT UPDATE ON auth.* TO 'auth'@'%';
-GRANT DELETE ON auth.* TO 'auth'@'%';
-GRANT EXECUTE ON auth.* TO 'auth'@'%';
+DROP USER IF EXISTS 'todo_auth'@'%';
+CREATE USER 'todo_auth'@'%' IDENTIFIED BY 'C0-Mm-0n-Auth';
+GRANT SELECT ON todo_auth.* TO 'todo_auth'@'%';
+GRANT INSERT ON todo_auth.* TO 'todo_auth'@'%';
+GRANT UPDATE ON todo_auth.* TO 'todo_auth'@'%';
+GRANT DELETE ON todo_auth.* TO 'todo_auth'@'%';
+GRANT EXECUTE ON todo_auth.* TO 'todo_auth'@'%';

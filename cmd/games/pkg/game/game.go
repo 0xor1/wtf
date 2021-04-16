@@ -12,7 +12,7 @@ import (
 	"github.com/0xor1/tlbx/pkg/web/app/service"
 	"github.com/0xor1/tlbx/pkg/web/app/service/sql"
 	"github.com/0xor1/tlbx/pkg/web/app/session/me"
-	comsql "github.com/0xor1/tlbx/pkg/web/app/sql"
+	sqlh "github.com/0xor1/tlbx/pkg/web/app/sql"
 	"github.com/gomodule/redigo/redis"
 )
 
@@ -69,8 +69,8 @@ func (b *Base) Abandoned() bool {
 
 func (b *Base) setMyID(tlbx app.Tlbx) {
 	// only set myId on active games
-	if b.IsActive() && me.AuthedExists(tlbx) {
-		me := me.GetAuthed(tlbx)
+	if b.IsActive() {
+		me := me.Get(tlbx).ID()
 		// loop through players only setting myId
 		// if they're an active player in this game
 		for _, p := range b.Players {
@@ -93,14 +93,13 @@ func New(tlbx app.Tlbx, gameType string, game Game) {
 	srv := service.Get(tlbx)
 	tx := srv.Data().Begin()
 	defer tx.Rollback()
-	id := tlbx.NewID()
-	// assign new session id for a new game so no clashes with old finished games
-	me.SetAuthed(tlbx, id)
-	b.ID = id
+	// assign new anon session id for a new game so no clashes with old finished games
+	id := me.Get(tlbx).ID()
+	b.ID = tlbx.NewID()
 	b.Players = []ID{id}
 	serialized := json.MustMarshal(game)
-	tx.Exec(`INSERT INTO games (id, type, updatedOn, serialized) VALUES (?, ?, ?, ?)`, b.ID, gameType, b.UpdatedOn, serialized)
-	tx.Exec(`INSERT INTO players (id, game) VALUES (?, ?)`, id, id)
+	tx.Exec(`INSERT INTO games (id, type, updatedOn, isActive, serialized) VALUES (?, ?, ?, 1, ?)`, b.ID, gameType, b.UpdatedOn, serialized)
+	tx.Exec(`INSERT INTO players (id, game) VALUES (?, ?)`, id, b.ID)
 	tx.Commit()
 	cacheSerializedGame(tlbx, gameType, id, serialized)
 	b.setMyID(tlbx)
@@ -116,9 +115,8 @@ func Join(tlbx app.Tlbx, maxPlayers uint8, gameType string, game ID, dst Game) G
 	app.BadReqIf(!b.NotStarted(), "can't join a game that has already been started")
 	app.BadReqIf(len(b.Players) >= int(maxPlayers), "game is already at max player limit: %d", maxPlayers)
 	// assign new session id for a new game so no clashes with old finished games
-	newUserID := tlbx.NewID()
+	newUserID := me.Get(tlbx).ID()
 	b.Players = append(b.Players, newUserID)
-	me.SetAuthed(tlbx, newUserID)
 	tx.Exec(`INSERT INTO players (id, game) VALUES (?, ?)`, newUserID, b.ID)
 	update(tlbx, tx, gameType, g)
 	tx.Commit()
@@ -134,7 +132,7 @@ func Start(tlbx app.Tlbx, minPlayers uint8, randomizePlayerOrder bool, gameType 
 	b := g.GetBase()
 	app.BadReqIf(!b.NotStarted(), "can't start a game that has already been started")
 	app.BadReqIf(len(b.Players) < int(minPlayers), "game hasn't met minimum player count requirement: %d", minPlayers)
-	app.BadReqIf(!b.ID.Equal(me.GetAuthed(tlbx)), "only the creator can start the game")
+	app.BadReqIf(!b.Players[0].Equal(me.Get(tlbx).ID()), "only the creator can start the game")
 	if customSetup != nil {
 		customSetup(g)
 	}
@@ -205,7 +203,7 @@ func read(tlbx app.Tlbx, tx sql.Tx, forUpdate bool, gameType string, game ID, up
 		} else {
 			row = service.Get(tlbx).Data().QueryRow(query, game)
 		}
-		comsql.ReturnNotFoundIfIsNoRows(row.Scan(&gotType, &serialized))
+		sqlh.ReturnNotFoundIfIsNoRows(row.Scan(&gotType, &serialized))
 	} else {
 		// cache key was successful which includes gameType
 		gotType = gameType
@@ -224,7 +222,7 @@ func update(tlbx app.Tlbx, tx sql.Tx, gameType string, game Game) {
 	base.UpdatedOn = NowMilli()
 	base.MyID = nil
 	serialized := json.MustMarshal(game)
-	tx.Exec(`UPDATE games Set updatedOn=?, serialized=? WHERE id=? AND type=?`, base.UpdatedOn, serialized, base.ID, gameType)
+	tx.Exec(`UPDATE games Set updatedOn=?, isActive=?, serialized=? WHERE id=? AND type=?`, base.UpdatedOn, base.IsActive(), serialized, base.ID, gameType)
 	cacheSerializedGame(tlbx, gameType, base.ID, serialized)
 }
 
@@ -246,35 +244,33 @@ func getUsersActiveGame(tlbx app.Tlbx, tx sql.Tx, forUpdate bool, gameType strin
 	PanicIf(forUpdate && tx == nil, "tx required forUpdate get call")
 	PanicIf(!forUpdate && tx != nil, "tx must be nil if it is a not forUpdate get call")
 	buf := make([]byte, 0, 5*app.KB)
-	if me.AuthedExists(tlbx) {
-		me := me.GetAuthed(tlbx)
-		query := `SELECT g.type, g.serialized FROM games g INNER JOIN players p ON p.game=g.id WHERE p.id=?`
-		var row isql.Row
-		if forUpdate {
-			query += ` FOR UPDATE`
-			row = tx.QueryRow(query, me)
-		} else {
-			row = service.Get(tlbx).Data().QueryRow(query, me)
-		}
-		gotType := ""
-		err := row.Scan(&gotType, &buf)
-		if err != nil && err != isql.ErrNoRows {
-			PanicOn(err)
-		}
-		// if we dont care what type we want
-		// and it's not for update, ignore
-		// the type check. This is only for
-		// validating if a user is in an active game
-		if gameType == "" && !forUpdate {
-			gameType = gotType
-		}
-		if len(buf) > 0 {
-			json.MustUnmarshal(buf, dst)
-			app.BadReqIf(forUpdate && gotType != gameType, "types do not match, your active game: %s, expected game: %s", gotType, gameType)
-			dst.GetBase().setMyID(tlbx)
-			if dst.GetBase().IsActive() {
-				return dst, gotType
-			}
+	me := me.Get(tlbx).ID()
+	query := `SELECT g.type, g.serialized FROM games g INNER JOIN players p ON p.game=g.id WHERE p.id=? AND g.isActive=1`
+	var row isql.Row
+	if forUpdate {
+		query += ` FOR UPDATE`
+		row = tx.QueryRow(query, me)
+	} else {
+		row = service.Get(tlbx).Data().QueryRow(query, me)
+	}
+	gotType := ""
+	err := row.Scan(&gotType, &buf)
+	if err != nil && err != isql.ErrNoRows {
+		PanicOn(err)
+	}
+	// if we dont care what type we want
+	// and it's not for update, ignore
+	// the type check. This is only for
+	// validating if a user is in an active game
+	if gameType == "" && !forUpdate {
+		gameType = gotType
+	}
+	if len(buf) > 0 {
+		json.MustUnmarshal(buf, dst)
+		app.BadReqIf(forUpdate && gotType != gameType, "types do not match, your active game: %s, expected game: %s", gotType, gameType)
+		dst.GetBase().setMyID(tlbx)
+		if dst.GetBase().IsActive() {
+			return dst, gotType
 		}
 	}
 	return nil, ""

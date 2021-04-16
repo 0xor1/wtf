@@ -1,7 +1,7 @@
 {% import . "github.com/0xor1/tlbx/pkg/core" %}
-{% import "github.com/0xor1/tlbx/pkg/web/app/sql" %}
+{% import sqlh "github.com/0xor1/tlbx/pkg/web/app/sql" %}
 
-{%- func qryInsert(args *sql.Args, auth *fullAuth) -%}
+{%- func qryInsert(args *sqlh.Args, auth *fullAuth) -%}
 {%- collapsespace -%}
 INSERT INTO auths(
     id,
@@ -34,7 +34,7 @@ VALUES (
     ?
 )
 {%- code 
-    *args = *sql.NewArgs(13) 
+    *args = *sqlh.NewArgs(13) 
     args.Append(
     auth.ID,
     auth.Email, 
@@ -53,11 +53,11 @@ VALUES (
 {%- endcollapsespace -%}
 {%- endfunc -%}
 
-{%- func qryGet(args *sql.Args, email *string, id *ID) -%}
+{%- func qryGet(args *sqlh.Args, email *string, id *ID) -%}
 {%- collapsespace -%}
 {%- code 
     PanicIf(email == nil && id == nil, "one of email or id must not be nil")
-    *args = *sql.NewArgs(1) -%}
+    *args = *sqlh.NewArgs(1) -%}
 SELECT
     id,
     email,
@@ -85,7 +85,7 @@ WHERE
 {%- endcollapsespace -%}
 {%- endfunc -%}
 
-{%- func qryUpdate(args *sql.Args, auth *fullAuth) -%}
+{%- func qryUpdate(args *sqlh.Args, auth *fullAuth) -%}
 {%- collapsespace -%}
 UPDATE auths
 SET email=?,
@@ -102,7 +102,7 @@ SET email=?,
     p=?
 WHERE id=?
 {%- code 
-    *args = *sql.NewArgs(13) 
+    *args = *sqlh.NewArgs(13) 
     args.Append(
     auth.Email,
     auth.IsActivated,
@@ -121,12 +121,12 @@ WHERE id=?
 {%- endcollapsespace -%}
 {%- endfunc -%}
 
-{%- func qryDel(args *sql.Args, me ID) -%}
+{%- func qryDel(args *sqlh.Args, me ID) -%}
 {%- collapsespace -%}
 DELETE FROM auths
 WHERE id=?
 {%- code 
-    *args = *sql.NewArgs(1) 
+    *args = *sqlh.NewArgs(1) 
     args.Append(me)
 -%}
 {%- endcollapsespace -%}

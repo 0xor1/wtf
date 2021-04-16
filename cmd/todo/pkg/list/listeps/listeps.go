@@ -11,8 +11,9 @@ import (
 	"github.com/0xor1/tlbx/pkg/ptr"
 	"github.com/0xor1/tlbx/pkg/web/app"
 	"github.com/0xor1/tlbx/pkg/web/app/service"
+	"github.com/0xor1/tlbx/pkg/web/app/service/sql"
 	"github.com/0xor1/tlbx/pkg/web/app/session/me"
-	"github.com/0xor1/tlbx/pkg/web/app/sql"
+	sqlh "github.com/0xor1/tlbx/pkg/web/app/sql"
 	"github.com/0xor1/tlbx/pkg/web/app/validate"
 )
 
@@ -38,7 +39,7 @@ var (
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
 				args := a.(*list.Create)
 				validate.Str("name", args.Name, tlbx, nameMinLen, nameMaxLen)
-				me := me.GetAuthed(tlbx)
+				me := me.AuthedGet(tlbx)
 				srv := service.Get(tlbx)
 				res := &list.List{
 					ID:                 tlbx.NewID(),
@@ -122,7 +123,7 @@ var (
 				list := getSetRes.Set[0]
 				list.Name = args.Name.V
 				srv := service.Get(tlbx)
-				_, err := srv.Data().Exec(`UPDATE lists SET name=? WHERE user=? AND id=?`, list.Name, me.GetAuthed(tlbx), list.ID)
+				_, err := srv.Data().Exec(`UPDATE lists SET name=? WHERE user=? AND id=?`, list.Name, me.AuthedGet(tlbx), list.ID)
 				PanicOn(err)
 				return list
 			},
@@ -151,16 +152,16 @@ var (
 					return nil
 				}
 				validate.MaxIDs(tlbx, "ids", args.IDs, 100)
-				me := me.GetAuthed(tlbx)
+				me := me.AuthedGet(tlbx)
 				srv := service.Get(tlbx)
 				queryArgs := make([]interface{}, 0, idsLen+1)
 				queryArgs = append(queryArgs, me)
 				queryArgs = append(queryArgs, args.IDs.ToIs()...)
 				tx := srv.Data().Begin()
 				defer tx.Rollback()
-				_, err := tx.Exec(`DELETE FROM lists WHERE user=?`+sql.InCondition(true, "id", idsLen), queryArgs...)
+				_, err := tx.Exec(`DELETE FROM lists WHERE user=?`+sqlh.InCondition(true, "id", idsLen), queryArgs...)
 				PanicOn(err)
-				_, err = tx.Exec(`DELETE FROM items WHERE user=?`+sql.InCondition(true, "list", idsLen), queryArgs...)
+				_, err = tx.Exec(`DELETE FROM items WHERE user=?`+sqlh.InCondition(true, "list", idsLen), queryArgs...)
 				PanicOn(err)
 				tx.Commit()
 				return nil
@@ -178,15 +179,13 @@ var (
 	}
 )
 
-func OnDelete(tlbx app.Tlbx, me ID) {
-	srv := service.Get(tlbx)
-	tx := srv.Data().Begin()
-	defer tx.Rollback()
-	_, err := tx.Exec(`DELETE FROM lists WHERE user=?`, me)
-	PanicOn(err)
-	_, err = tx.Exec(`DELETE FROM items WHERE user=?`, me)
-	PanicOn(err)
-	tx.Commit()
+func OnDelete(tlbx app.Tlbx, me ID, tx sql.DoTxAdder) {
+	tx.Add(service.Get(tlbx).Data().Begin(), func(tx sql.Tx) {
+		_, err := tx.Exec(`DELETE FROM lists WHERE user=?`, me)
+		PanicOn(err)
+		_, err = tx.Exec(`DELETE FROM items WHERE user=?`, me)
+		PanicOn(err)
+	})
 }
 
 func getSet(tlbx app.Tlbx, args *list.Get) *list.GetRes {
@@ -206,8 +205,8 @@ func getSet(tlbx app.Tlbx, args *list.Get) *list.GetRes {
 			args.CompletedItemCountMax != nil &&
 			*args.CompletedItemCountMin > *args.CompletedItemCountMax,
 		"completedItemCountMin must not be greater than completedItemCountMax")
-	args.Limit = sql.Limit100(args.Limit)
-	me := me.GetAuthed(tlbx)
+	args.Limit = sqlh.Limit100(args.Limit)
+	me := me.AuthedGet(tlbx)
 	srv := service.Get(tlbx)
 	res := &list.GetRes{
 		Set: make([]*list.List, 0, args.Limit),
@@ -217,8 +216,8 @@ func getSet(tlbx app.Tlbx, args *list.Get) *list.GetRes {
 	queryArgs = append(queryArgs, me)
 	idsLen := len(args.IDs)
 	if idsLen > 0 {
-		query.WriteString(sql.InCondition(true, `id`, idsLen))
-		query.WriteString(sql.OrderByField(`id`, idsLen))
+		query.WriteString(sqlh.InCondition(true, `id`, idsLen))
+		query.WriteString(sqlh.OrderByField(`id`, idsLen))
 		queryArgs = append(queryArgs, args.IDs.ToIs()...)
 		queryArgs = append(queryArgs, args.IDs.ToIs()...)
 	} else {
@@ -251,10 +250,10 @@ func getSet(tlbx app.Tlbx, args *list.Get) *list.GetRes {
 			queryArgs = append(queryArgs, *args.CompletedItemCountMax)
 		}
 		if args.After != nil {
-			query.WriteString(Strf(` AND %s %s= (SELECT %s FROM lists WHERE user=? AND id=?) AND id <> ?`, args.Sort, sql.GtLtSymbol(*args.Asc), args.Sort))
+			query.WriteString(Strf(` AND %s %s= (SELECT %s FROM lists WHERE user=? AND id=?) AND id <> ?`, args.Sort, sqlh.GtLtSymbol(*args.Asc), args.Sort))
 			queryArgs = append(queryArgs, me, *args.After, *args.After)
 			if args.Sort != list.SortCreatedOn {
-				query.WriteString(Strf(` AND createdOn %s (SELECT createdOn FROM lists WHERE user=? AND id=?)`, sql.GtLtSymbol(*args.Asc)))
+				query.WriteString(Strf(` AND createdOn %s (SELECT createdOn FROM lists WHERE user=? AND id=?)`, sqlh.GtLtSymbol(*args.Asc)))
 				queryArgs = append(queryArgs, me, *args.After)
 			}
 		}
@@ -263,7 +262,7 @@ func getSet(tlbx app.Tlbx, args *list.Get) *list.GetRes {
 			createdOnSecondarySort = ", createdOn"
 		}
 
-		query.WriteString(sql.OrderLimit100(string(args.Sort)+createdOnSecondarySort, *args.Asc, args.Limit))
+		query.WriteString(sqlh.OrderLimit100(string(args.Sort)+createdOnSecondarySort, *args.Asc, args.Limit))
 	}
 	PanicOn(srv.Data().Query(func(rows isql.Rows) {
 		iLimit := int(args.Limit)

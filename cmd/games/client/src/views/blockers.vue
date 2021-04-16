@@ -51,13 +51,13 @@
           <p>
             PLAYERS: {{game.players.length}}
           </p>
-          <p v-if="game.id !== game.myId">
+          <p v-if="game.players[0] !== game.myId">
             WAITING FOR MORE PLAYERS OR CREATOR TO START GAME
           </p>
-          <p v-if="game.id === game.myId">
+          <p v-if="game.players[0] === game.myId">
             SEND LINK TO FRIENDS: <button @click.stop.prevent="copyLink">COPY LINK</button>
           </p>
-          <button v-if="game.id === game.myId && game.players.length >= 2" @click.stop.prevent="start">START GAME</button>
+          <button v-if="game.players[0] === game.myId && game.players.length >= 2" @click.stop.prevent="start">START GAME</button>
         </div>
         <p v-if="game.state >= 1">
           TURN: {{game.turn + 1}}

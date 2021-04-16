@@ -46,10 +46,51 @@ type DoTx interface {
 	Commit()
 }
 
-func NewDoTx(tx Tx, do func(Tx)) DoTx {
+type DoTxAdder interface {
+	Add(tx Tx, do func(Tx))
+}
+
+type DoTxs interface {
+	DoTx
+	DoTxAdder
+}
+
+func newDoTx(tx Tx, do func(Tx)) DoTx {
 	return &doTx{
 		tx: tx,
 		do: do,
+	}
+}
+
+func NewDoTxs() DoTxs {
+	return &doTxs{
+		dos: make([]DoTx, 0, 10),
+	}
+}
+
+type doTxs struct {
+	dos []DoTx
+}
+
+func (t *doTxs) Add(tx Tx, do func(Tx)) {
+	t.dos = append(t.dos, newDoTx(tx, do))
+}
+
+func (t *doTxs) Rollback() {
+	for _, do := range t.dos {
+		do.Rollback()
+	}
+}
+
+func (t *doTxs) Do() {
+	for _, do := range t.dos {
+		do.Do()
+	}
+}
+
+func (t *doTxs) Commit() {
+	for _, do := range t.dos {
+		do.Commit()
 	}
 }
 
