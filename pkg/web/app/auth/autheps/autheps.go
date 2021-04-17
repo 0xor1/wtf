@@ -25,6 +25,27 @@ import (
 	"github.com/go-sql-driver/mysql"
 )
 
+func OnRegister(tlbx app.Tlbx, me ID, tx sql.Tx) {
+	qryArgs := sqlh.NewArgs(0)
+	qry := qryOnRegister(qryArgs, me)
+	_, err := tx.Exec(qry, qryArgs.Is()...)
+	PanicOn(err)
+}
+
+func OnActivate(tlbx app.Tlbx, me ID, tx sql.Tx) {
+	qryArgs := sqlh.NewArgs(0)
+	qry := qryOnActivate(qryArgs, me)
+	_, err := tx.Exec(qry, qryArgs.Is()...)
+	PanicOn(err)
+}
+
+func OnDelete(tlbx app.Tlbx, me ID, tx sql.Tx) {
+	qryArgs := sqlh.NewArgs(0)
+	qry := qryOnDelete(qryArgs, me)
+	_, err := tx.Exec(qry, qryArgs.Is()...)
+	PanicOn(err)
+}
+
 type Config struct {
 	AppDataDefault func() interface{}
 	AppDataExample func() interface{}
@@ -374,7 +395,7 @@ func New(
 				auth := getAuth(tx, nil, &m)
 				app.BadReqIf(!bytes.Equal(auth.Pwd, crypt.ScryptKey([]byte(args.Pwd), auth.Salt, auth.N, auth.R, auth.P, scryptKeyLen)), "incorrect pwd")
 				qryArgs := sqlh.NewArgs(0)
-				qry := qryDel(qryArgs, m)
+				qry := qryDelete(qryArgs, m)
 				_, err := tx.Exec(qry, qryArgs.Is()...)
 				PanicOn(err)
 				appTx := sql.NewDoTxs()
@@ -542,7 +563,7 @@ type fullAuth struct {
 func getAuth(tx sql.Tx, email *string, id *ID) *fullAuth {
 	PanicIf(email == nil && id == nil, "one of email or id must not be nil")
 	qryArgs := sqlh.NewArgs(0)
-	qry := qryGet(qryArgs, email, id)
+	qry := qrySelect(qryArgs, email, id)
 	row := tx.QueryRow(qry, qryArgs.Is()...)
 	res := &fullAuth{}
 	err := row.Scan(

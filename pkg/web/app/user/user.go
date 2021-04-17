@@ -337,12 +337,12 @@ func (a *GetAvatar) MustDo(c *app.Client) *app.DownStream {
 	return res
 }
 
-type User struct {
+type Socials struct {
 	ID         ID      `json:"id"`
-	Handle     *string `json:"handle,omitempty"`
-	Alias      *string `json:"alias,omitempty"`
-	HasAvatar  *bool   `json:"hasAvatar,omitempty"`
-	FcmEnabled *bool   `json:"fcmEnabled,omitempty"`
+	Handle     string `json:"handle,omitempty"`
+	Alias      string `json:"alias,omitempty"`
+	HasAvatar  bool   `json:"hasAvatar,omitempty"`
+	FcmEnabled bool   `json:"fcmEnabled,omitempty"`
 }
 
 type SetFCMEnabled struct {

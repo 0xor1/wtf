@@ -104,3 +104,9 @@ func PList(count int) string {
 	PanicIf(count < 1, `count must be >= 1`)
 	return `?` + strings.Repeat(`,?`, count-1)
 }
+
+func LikePrefix(prefix string) string {
+	prefix = strings.ReplaceAll(prefix, `\`, `\\`)
+	prefix = strings.ReplaceAll(prefix, `%`, `\%`)
+	return Strf(`%s%%`, prefix)
+}

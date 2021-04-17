@@ -53,7 +53,7 @@ VALUES (
 {%- endcollapsespace -%}
 {%- endfunc -%}
 
-{%- func qryGet(args *sqlh.Args, email *string, id *ID) -%}
+{%- func qrySelect(args *sqlh.Args, email *string, id *ID) -%}
 {%- collapsespace -%}
 {%- code 
     PanicIf(email == nil && id == nil, "one of email or id must not be nil")
@@ -121,7 +121,49 @@ WHERE id=?
 {%- endcollapsespace -%}
 {%- endfunc -%}
 
-{%- func qryDel(args *sqlh.Args, me ID) -%}
+{%- func qryDelete(args *sqlh.Args, me ID) -%}
+{%- collapsespace -%}
+DELETE FROM auths
+WHERE id=?
+{%- code 
+    *args = *sqlh.NewArgs(1) 
+    args.Append(me)
+-%}
+{%- endcollapsespace -%}
+{%- endfunc -%}
+
+{%- func qryOnRegister(args *sqlh.Args, me ID) -%}
+{%- collapsespace -%}
+INSERT INTO auths (
+    id,
+    isActivated,
+    registeredOn
+)
+VALUES (
+    ?,
+    ?,
+    ?
+)
+{%- code 
+    *args = *sqlh.NewArgs(3) 
+    args.Append(me, 0, Now())
+-%}
+{%- endcollapsespace -%}
+{%- endfunc -%}
+
+{%- func qryOnActivate(args *sqlh.Args, me ID) -%}
+{%- collapsespace -%}
+UPDATE auths
+SET isActivated=1
+WHERE id=?
+{%- code 
+    *args = *sqlh.NewArgs(1) 
+    args.Append(me)
+-%}
+{%- endcollapsespace -%}
+{%- endfunc -%}
+
+{%- func qryOnDelete(args *sqlh.Args, me ID) -%}
 {%- collapsespace -%}
 DELETE FROM auths
 WHERE id=?
