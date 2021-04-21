@@ -1,8 +1,9 @@
 {% import . "github.com/0xor1/tlbx/pkg/core" %}
 {% import "github.com/0xor1/tlbx/pkg/web/app" %}
 {% import sqlh "github.com/0xor1/tlbx/pkg/web/app/sql" %}
+{% import "github.com/0xor1/tlbx/pkg/web/app/social" %}
 
-{%- func qryInsert(args *sqlh.Args, social *social.Socials) -%}
+{%- func qryInsert(args *sqlh.Args, social *social.Social) -%}
 {%- collapsespace -%}
 INSERT INTO socials(
     id,
@@ -27,14 +28,33 @@ VALUES (
 {%- endcollapsespace -%}
 {%- endfunc -%}
 
-{%- func qrySelect(args *sqlh.Args, ids IDs, handlePrefix string, limit uint16) -%}
+{%- func qryUpdate(args *sqlh.Args, social *social.Social) -%}
+{%- collapsespace -%}
+UPDATE socials SET
+    handle=?,
+    alias=?,
+    hasAvatar=?
+WHERE
+    id=?
+{%- code 
+    *args = *sqlh.NewArgs(4) 
+    args.Append(
+    social.Handle,
+    social.Alias,
+    social.HasAvatar,
+    social.ID,
+) -%}
+{%- endcollapsespace -%}
+{%- endfunc -%}
+
+{%- func qrySelect(qryArgs *sqlh.Args, args *social.Get) -%}
 {%- collapsespace -%}
 {%- code 
-    limit = sqlh.Limit100(limit)
-    app.BadReqIf(len(ids) > 100, "max ids to query is 100")
-    app.BadReqIf(handlePrefix != "" && StrLen(handlePrefix) < 3, "min handlePrefix len is 3")
-    app.BadReqIf(len(ids) == 0 && handlePrefix == "", "no query parameters provided please")
-    *args = *sqlh.NewArgs(len(ids) + 1) 
+    args.Limit = sqlh.Limit100(args.Limit)
+    app.BadReqIf(len(args.IDs) > 100, "max ids to query is 100")
+    app.BadReqIf(args.HandlePrefix != "" && StrLen(args.HandlePrefix) < 3, "min handlePrefix len is 3")
+    app.BadReqIf(len(args.IDs) == 0 && args.HandlePrefix == "", "no query parameters provided please")
+    *qryArgs = *sqlh.NewArgs(len(args.IDs) + 1) 
 -%}
 SELECT id,
     handle,
@@ -43,17 +63,21 @@ SELECT id,
 FROM socials
 WHERE 
 {% switch true %}
-    {%- case len(ids) > 0 -%}
-        id IN (?{%- for _ := range ids -%},?{%- endfor -%})
+    {%- case len(args.IDs) > 0 -%}
+        id IN ({%- for i := range args.IDs -%}{%- if i > 0 -%},{%- endif -%}?{%- endfor -%})
+        ORDER BY FIELD (id,{%- for i := range args.IDs -%}{%- if i > 0 -%},{%- endif -%}?{%- endfor -%})
         {%- code
-            *args = *sqlh.NewArgs(len(ids)) 
-            args.Append(ids.ToIs()...)
+            *qryArgs = *sqlh.NewArgs(len(args.IDs)*2) 
+            qryArgs.Append(args.IDs.ToIs()...)
+            qryArgs.Append(args.IDs.ToIs()...)
         -%}
-    {%- case handlePrefix -%}
+    {%- case args.HandlePrefix != "" -%}
         handle LIKE ?
+        ORDER BY handle ASC
+        LIMIT ?
         {%- code
-            *args = *sqlh.NewArgs(2) 
-            args.Append(sqlh.LikePrefix(handlePrefix), limit)
+            *qryArgs = *sqlh.NewArgs(2) 
+            qryArgs.Append(sqlh.LikePrefix(args.HandlePrefix), args.Limit)
         -%}
 {% endswitch%}
 {%- endcollapsespace -%}

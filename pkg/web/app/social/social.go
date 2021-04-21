@@ -71,27 +71,52 @@ func (a *GetAvatar) MustDo(c *app.Client) *app.DownStream {
 	return res
 }
 
+type GetRes struct {
+	Set  []*Social `json:"set"`
+	More bool      `json:"more"`
+}
+
 type Get struct {
-	IDs []ID `json:"ids"`
+	IDs          IDs    `json:"ids,omitempty"`
+	HandlePrefix string `json:"handlePrefix"`
+	Limit        uint16 `json:"limit"`
 }
 
 func (_ *Get) Path() string {
-	return "/socials/get"
+	return "/social/get"
 }
 
-func (a *Get) Do(c *app.Client) ([]*Socials, error) {
-	res := []*Socials{}
+func (a *Get) Do(c *app.Client) (*GetRes, error) {
+	res := &GetRes{}
 	err := app.Call(c, a.Path(), a, &res)
 	return res, err
 }
 
-func (a *Get) MustDo(c *app.Client) []*Socials {
+func (a *Get) MustDo(c *app.Client) *GetRes {
 	res, err := a.Do(c)
 	PanicOn(err)
 	return res
 }
 
-type Socials struct {
+type GetMe struct{}
+
+func (_ *GetMe) Path() string {
+	return "/social/getMe"
+}
+
+func (a *GetMe) Do(c *app.Client) (*Social, error) {
+	res := &Social{}
+	err := app.Call(c, a.Path(), nil, &res)
+	return res, err
+}
+
+func (a *GetMe) MustDo(c *app.Client) *Social {
+	res, err := a.Do(c)
+	PanicOn(err)
+	return res
+}
+
+type Social struct {
 	ID        ID     `json:"id"`
 	Handle    string `json:"handle"`
 	Alias     string `json:"alias"`

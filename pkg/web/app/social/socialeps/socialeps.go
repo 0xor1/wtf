@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"regexp"
 	"strings"
-	"time"
 
 	"image"
 	_ "image/gif"
@@ -16,14 +15,13 @@ import (
 	"image/png"
 
 	. "github.com/0xor1/tlbx/pkg/core"
-	"github.com/0xor1/tlbx/pkg/crypt"
+	"github.com/0xor1/tlbx/pkg/field"
 	"github.com/0xor1/tlbx/pkg/isql"
-	"github.com/0xor1/tlbx/pkg/json"
-	"github.com/0xor1/tlbx/pkg/ptr"
 	"github.com/0xor1/tlbx/pkg/store"
 	"github.com/0xor1/tlbx/pkg/web/app"
 	"github.com/0xor1/tlbx/pkg/web/app/service"
 	"github.com/0xor1/tlbx/pkg/web/app/service/sql"
+	"github.com/0xor1/tlbx/pkg/web/app/session/me"
 	"github.com/0xor1/tlbx/pkg/web/app/social"
 	sqlh "github.com/0xor1/tlbx/pkg/web/app/sql"
 	"github.com/0xor1/tlbx/pkg/web/app/validate"
@@ -35,11 +33,17 @@ const (
 	AvatarPrefix = ""
 )
 
-func NopOnSetSocials(_ app.Tlbx, _ *social.Socials, txAdder sql.DoTxAdder) error {
-	return nil
+func AppDataDefault() interface{} {
+	return &social.RegisterAppData{}
+}
+func AppDataExample() interface{} {
+	return &social.RegisterAppData{
+		Handle: "bloe_joggs",
+		Alias:  "joe_bloggs",
+	}
 }
 
-func OnRegister(tlbx app.Tlbx, me ID, appData social.RegisterAppData, tx sql.Tx) {
+func OnRegister(tlbx app.Tlbx, me ID, appData *social.RegisterAppData, tx sql.Tx) {
 	h := strings.ReplaceAll(
 		StrLower(
 			StrTrimWS(appData.Handle)), " ", "_")
@@ -47,7 +51,7 @@ func OnRegister(tlbx app.Tlbx, me ID, appData social.RegisterAppData, tx sql.Tx)
 	a := StrTrimWS(appData.Alias)
 	validate.Str("alias", a, tlbx, 0, aliasMaxLen)
 	qryArgs := sqlh.NewArgs(0)
-	qry := qryInsert(qryArgs, &social.Socials{
+	qry := qryInsert(qryArgs, &social.Social{
 		ID:        me,
 		Handle:    h,
 		Alias:     a,
@@ -58,139 +62,133 @@ func OnRegister(tlbx app.Tlbx, me ID, appData social.RegisterAppData, tx sql.Tx)
 }
 
 func OnDelete(tlbx app.Tlbx, me ID, tx sql.Tx) {
-	service.Get(tlbx).Store().MustDelete(AvatarBucket, store.Key(AvatarPrefix, me))
+	// this needs to be called before autheps.OnDelete to ensure the users socials are still there
+	s := getSocial(tx, me)
+	if s != nil && s.HasAvatar {
+		service.Get(tlbx).Store().MustDelete(AvatarBucket, store.Key(AvatarPrefix, me))
+	}
+}
+
+type Config struct {
+	OnSetSocials func(app.Tlbx, sql.Tx, *social.Social)
 }
 
 func New(
-	onSetSocials func(app.Tlbx, sql.Tx, *social.Socials) error,
+	configs ...func(c *Config),
 ) []*app.Endpoint {
+	c := config(configs...)
 	return []*app.Endpoint{
 		&app.Endpoint{
-			Description:  "get users",
-			Path:         (&user.Get{}).Path(),
+			Description:  "get my socials",
+			Path:         (&social.GetMe{}).Path(),
 			Timeout:      500,
 			MaxBodyBytes: app.KB,
 			IsPrivate:    false,
 			GetDefaultArgs: func() interface{} {
-				return &user.Get{}
+				return nil
 			},
 			GetExampleArgs: func() interface{} {
-				return &user.Get{
-					Users: []ID{app.ExampleID()},
-				}
+				return nil
 			},
 			GetExampleResponse: func() interface{} {
-				var fcmEnabled *bool
-				if enableFCM {
-					fcmEnabled = ptr.Bool(true)
-				}
-				ex := []user.User{
-					{
-						ID:         app.ExampleID(),
-						Handle:     ptr.String("bloe_joggs"),
-						Alias:      ptr.String("Joe Bloggs"),
-						HasAvatar:  ptr.Bool(true),
-						FcmEnabled: fcmEnabled,
-					},
-				}
-				return ex
+				return exampleSocial
 			},
-			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.Get)
-				if len(args.Users) == 0 {
-					return nil
-				}
-				validate.MaxIDs(tlbx, "users", args.Users, 1000)
-				srv := service.Get(tlbx)
-				query := bytes.NewBufferString(`SELECT id, handle, alias, hasAvatar, fcmEnabled FROM users WHERE id IN(?`)
-				queryArgs := make([]interface{}, 0, len(args.Users))
-				queryArgs = append(queryArgs, args.Users[0])
-				for _, id := range args.Users[1:] {
-					query.WriteString(`,?`)
-					queryArgs = append(queryArgs, id)
-				}
-				query.WriteString(`)`)
-				res := make([]*user.User, 0, len(args.Users))
-				PanicOn(srv.User().Query(func(rows isql.Rows) {
-					for rows.Next() {
-						u := &user.User{}
-						PanicOn(rows.Scan(&u.ID, &u.Handle, &u.Alias, &u.HasAvatar, &u.FcmEnabled))
-						res = append(res, u)
-					}
-				}, query.String(), queryArgs...))
+			Handler: func(tlbx app.Tlbx, _ interface{}) interface{} {
+				me := me.AuthedGet(tlbx)
+				tx := service.Get(tlbx).Data().Begin()
+				defer tx.Rollback()
+				res := getSocial(tx, me)
+				tx.Commit()
 				return res
 			},
-		}, &app.Endpoint{
-			Description:  "set handle",
-			Path:         (&user.SetHandle{}).Path(),
+		},
+		&app.Endpoint{
+			Description:  "get socials",
+			Path:         (&social.Get{}).Path(),
 			Timeout:      500,
 			MaxBodyBytes: app.KB,
 			IsPrivate:    false,
 			GetDefaultArgs: func() interface{} {
-				return &user.SetHandle{}
+				return &social.Get{}
 			},
 			GetExampleArgs: func() interface{} {
-				return &user.SetHandle{
-					Handle: "joe_bloggs",
+				return &social.Get{
+					HandlePrefix: "blo",
+					Limit:        1,
 				}
 			},
 			GetExampleResponse: func() interface{} {
-				return nil
+				return &social.GetRes{
+					Set: []*social.Social{
+						exampleSocial,
+					},
+					More: true,
+				}
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.SetHandle)
-				validate.Str("handle", args.Handle, tlbx, handleMinLen, handleMaxLen, handleRegex)
-				srv := service.Get(tlbx)
-				me := sessionGet(tlbx)
-				tx := srv.User().Begin()
+				args := a.(*social.Get)
+				tx := service.Get(tlbx).Data().Begin()
 				defer tx.Rollback()
-				user := getUser(tx, nil, &me)
-				user.Handle = &args.Handle
-				updateUser(tx, user)
-				if onSetSocials != nil {
-					PanicOn(onSetSocials(tlbx, &user.User))
-				}
+				res := getSocials(tx, args)
 				tx.Commit()
-				return nil
+				return res
 			},
-		}, &app.Endpoint{
-			Description:  "set alias",
-			Path:         (&user.SetAlias{}).Path(),
+		},
+		&app.Endpoint{
+			Description:  "update socials",
+			Path:         (&social.Update{}).Path(),
 			Timeout:      500,
 			MaxBodyBytes: app.KB,
 			IsPrivate:    false,
 			GetDefaultArgs: func() interface{} {
-				return &user.SetAlias{}
+				return &social.Update{}
 			},
 			GetExampleArgs: func() interface{} {
-				return &user.SetAlias{
-					Alias: ptr.String("Boe Jloggs"),
+				return &social.Update{
+					Handle: &field.String{V: "joe_bloggs"},
+					Alias:  &field.String{V: "bloe joggs"},
 				}
 			},
 			GetExampleResponse: func() interface{} {
 				return nil
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.SetAlias)
+				args := a.(*social.Update)
+				if args.Handle == nil && args.Alias == nil {
+					// not updating anything
+					return nil
+				}
+				if args.Handle != nil {
+					args.Handle.V = StrTrimWS(args.Handle.V)
+					validate.Str("handle", args.Handle.V, tlbx, handleMinLen, handleMaxLen, handleRegex)
+				}
 				if args.Alias != nil {
-					validate.Str("alias", *args.Alias, tlbx, 0, aliasMaxLen)
+					args.Alias.V = StrTrimWS(args.Alias.V)
+					validate.Str("alias", args.Alias.V, tlbx, 0, aliasMaxLen)
 				}
+
 				srv := service.Get(tlbx)
-				me := sessionGet(tlbx)
-				tx := srv.User().Begin()
+				me := me.AuthedGet(tlbx)
+				tx := srv.Data().Begin()
 				defer tx.Rollback()
-				user := getUser(tx, nil, &me)
-				user.Alias = args.Alias
-				updateUser(tx, user)
-				if onSetSocials != nil {
-					PanicOn(onSetSocials(tlbx, &user.User))
+				social := getSocial(tx, me)
+				if args.Handle != nil {
+					social.Handle = args.Handle.V
+				}
+				if args.Alias != nil {
+					social.Alias = args.Alias.V
+				}
+				updateSocial(tx, social)
+				if c.OnSetSocials != nil {
+					c.OnSetSocials(tlbx, tx, social)
 				}
 				tx.Commit()
 				return nil
 			},
-		}, &app.Endpoint{
+		},
+		&app.Endpoint{
 			Description:  "set avatar",
-			Path:         (&user.SetAvatar{}).Path(),
+			Path:         (&social.SetAvatar{}).Path(),
 			Timeout:      500,
 			MaxBodyBytes: app.MB,
 			IsPrivate:    false,
@@ -206,16 +204,16 @@ func New(
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
 				args := a.(*app.UpStream)
 				defer args.Content.Close()
-				me := sessionGet(tlbx)
+				me := me.AuthedGet(tlbx)
 				srv := service.Get(tlbx)
-				tx := srv.User().Begin()
+				tx := srv.Data().Begin()
 				defer tx.Rollback()
-				user := getUser(tx, nil, &me)
+				social := getSocial(tx, me)
 				content, err := ioutil.ReadAll(args.Content)
 				PanicOn(err)
 				args.Size = int64(len(content))
 				if args.Size > 0 {
-					if *user.HasAvatar {
+					if social.HasAvatar {
 						srv.Store().MustDelete(AvatarBucket, store.Key(AvatarPrefix, me))
 					}
 					avatar, _, err := image.Decode(bytes.NewBuffer(content))
@@ -237,45 +235,45 @@ func New(
 						true,
 						false,
 						bytes.NewReader(buff.Bytes()))
-				} else if *user.HasAvatar == true {
+				} else if social.HasAvatar == true {
 					srv.Store().MustDelete(AvatarBucket, store.Key(AvatarPrefix, me))
 				}
 				nowHasAvatar := args.Size > 0
-				if *user.HasAvatar != nowHasAvatar {
-					user.HasAvatar = ptr.Bool(nowHasAvatar)
-					if onSetSocials != nil {
-						PanicOn(onSetSocials(tlbx, &user.User))
+				if social.HasAvatar != nowHasAvatar {
+					social.HasAvatar = nowHasAvatar
+					if c.OnSetSocials != nil {
+						c.OnSetSocials(tlbx, tx, social)
 					}
 				}
-				updateUser(tx, user)
+				updateSocial(tx, social)
 				tx.Commit()
 				return nil
 			},
 		},
 		&app.Endpoint{
 			Description:      "get avatar",
-			Path:             (&user.GetAvatar{}).Path(),
+			Path:             (&social.GetAvatar{}).Path(),
 			Timeout:          500,
 			MaxBodyBytes:     app.KB,
 			SkipXClientCheck: true,
 			IsPrivate:        false,
 			GetDefaultArgs: func() interface{} {
-				return &user.GetAvatar{}
+				return &social.GetAvatar{}
 			},
 			GetExampleArgs: func() interface{} {
-				return &user.GetAvatar{
-					User: app.ExampleID(),
+				return &social.GetAvatar{
+					ID: app.ExampleID(),
 				}
 			},
 			GetExampleResponse: func() interface{} {
 				return &app.DownStream{}
 			},
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
-				args := a.(*user.GetAvatar)
+				args := a.(*social.GetAvatar)
 				srv := service.Get(tlbx)
-				name, mimeType, size, content := srv.Store().MustGet(AvatarBucket, store.Key(AvatarPrefix, args.User))
+				name, mimeType, size, content := srv.Store().MustGet(AvatarBucket, store.Key(AvatarPrefix, args.ID))
 				ds := &app.DownStream{}
-				ds.ID = args.User
+				ds.ID = args.ID
 				ds.Name = name
 				ds.Type = mimeType
 				ds.Size = size
@@ -286,112 +284,63 @@ func New(
 	}
 }
 
-var (
-	handleRegex  = regexp.MustCompile(`\A[_a-z0-9]{1,20}\z`)
-	handleMinLen = 3
-	handleMaxLen = 20
-	emailRegex   = regexp.MustCompile(`\A.+@.+\..+\z`)
-	emailMaxLen  = 250
-	aliasMaxLen  = 50
-	pwdRegexs    = []*regexp.Regexp{
-		regexp.MustCompile(`[0-9]`),
-		regexp.MustCompile(`[a-z]`),
-		regexp.MustCompile(`[A-Z]`),
-		regexp.MustCompile(`[\w]`),
+func config(configs ...func(c *Config)) *Config {
+	c := &Config{
+		OnSetSocials: func(_ app.Tlbx, _ sql.Tx, _ *social.Social) {},
 	}
-	pwdMinLen     = 8
-	pwdMaxLen     = 100
-	scryptN       = 32768
-	scryptR       = 8
-	scryptP       = 1
-	scryptSaltLen = 256
-	scryptKeyLen  = 256
+	for _, config := range configs {
+		config(c)
+	}
+	return c
+}
+
+var (
+	handleRegex   = regexp.MustCompile(`\A[_a-z0-9]{1,20}\z`)
+	handleMinLen  = 3
+	handleMaxLen  = 20
+	aliasMaxLen   = 50
 	avatarDim     = 250
-	exampleJin    = json.MustFromString(`{"v":1, "saveDir":"/my/save/dir", "startTab":"favourites"}`)
+	exampleSocial = &social.Social{
+		ID:        app.ExampleID(),
+		Handle:    "bloe_joggs",
+		Alias:     "Joe Bloggs",
+		HasAvatar: true,
+	}
 )
 
-func sendActivateEmail(srv service.Layer, sendTo, from, link string, handle *string) {
-	html := `<p>Thank you for registering.</p><p>Click this link to activate your account:</p><p><a href="` + link + `">Activate</a></p><p>If you didn't register for this account you can simply ignore this email.</p>`
-	txt := "Thank you for registering.\nClick this link to activate your account:\n\n" + link + "\n\nIf you didn't register for this account you can simply ignore this email."
-	if handle != nil {
-		html = Strf("Hi %s,\n\n", *handle) + html
-		txt = Strf("Hi %s,\n\n", *handle) + txt
+func getSocial(tx sql.Tx, id ID) *social.Social {
+	res := getSocials(tx, &social.Get{IDs: IDs{id}})
+	if len(res.Set) == 1 {
+		return res.Set[0]
 	}
-	srv.Email().MustSend([]string{sendTo}, from, "Activate", html, txt)
+	return nil
 }
 
-func sendConfirmChangeEmailEmail(srv service.Layer, sendTo, from, link string) {
-	srv.Email().MustSend([]string{sendTo}, from, "Confirm change email",
-		`<p>Click this link to change the email associated with your account:</p><p><a href="`+link+`">Confirm change email</a></p>`,
-		"Confirm change email:\n\n"+link)
-}
-
-func sendResetPwdEmail(srv service.Layer, sendTo, from, newPwd string) {
-	srv.Email().MustSend([]string{sendTo}, from, "Pwd Reset", `<p>New Pwd: `+newPwd+`</p>`, `New Pwd: `+newPwd)
-}
-
-type fullUser struct {
-	user.User
-	Email           string
-	RegisteredOn    time.Time
-	ActivatedOn     time.Time
-	NewEmail        *string
-	ActivateCode    *string
-	ChangeEmailCode *string
-	LastPwdResetOn  *time.Time
-}
-
-func getUser(tx sql.Tx, email *string, id *ID) *fullUser {
-	PanicIf(email == nil && id == nil, "one of email or id must not be nil")
-	query := `SELECT id, email, handle, alias, hasAvatar, fcmEnabled, registeredOn, activatedOn, newEmail, activateCode, changeEmailCode, lastPwdResetOn FROM users WHERE `
-	var arg interface{}
-	if email != nil {
-		query += `email=?`
-		arg = *email
-	} else {
-		query += `id=?`
-		arg = *id
+func getSocials(tx sql.Tx, args *social.Get) *social.GetRes {
+	qryArgs := sqlh.NewArgs(0)
+	qry := qrySelect(qryArgs, args)
+	res := &social.GetRes{
+		Set:  make([]*social.Social, 0, args.Limit),
+		More: false,
 	}
-	row := tx.QueryRow(query, arg)
-	res := &fullUser{}
-	err := row.Scan(&res.ID, &res.Email, &res.Handle, &res.Alias, &res.HasAvatar, &res.FcmEnabled, &res.RegisteredOn, &res.ActivatedOn, &res.NewEmail, &res.ActivateCode, &res.ChangeEmailCode, &res.LastPwdResetOn)
-	if err == isql.ErrNoRows {
-		return nil
-	}
-	PanicOn(err)
+	PanicOn(tx.Query(func(rows isql.Rows) {
+		iLimit := int(args.Limit)
+		for rows.Next() {
+			if len(args.IDs) == 0 && len(res.Set)+1 == iLimit {
+				res.More = true
+				break
+			}
+			s := &social.Social{}
+			PanicOn(rows.Scan(&s.ID, &s.Handle, &s.Alias, &s.HasAvatar))
+			res.Set = append(res.Set, s)
+		}
+	}, qry, qryArgs.Is()...))
 	return res
 }
 
-func updateUser(tx sql.Tx, user *fullUser) {
-	_, err := tx.Exec(`UPDATE users SET email=?, handle=?, alias=?, hasAvatar=?, fcmEnabled=?, registeredOn=?, activatedOn=?, newEmail=?, activateCode=?, changeEmailCode=?, lastPwdResetOn=? WHERE id=?`, user.Email, user.Handle, user.Alias, user.HasAvatar, user.FcmEnabled, user.RegisteredOn, user.ActivatedOn, user.NewEmail, user.ActivateCode, user.ChangeEmailCode, user.LastPwdResetOn, user.ID)
-	PanicOn(err)
-}
-
-type pwd struct {
-	ID   ID
-	Salt []byte
-	Pwd  []byte
-	N    int
-	R    int
-	P    int
-}
-
-func getPwd(srv service.Layer, id ID) *pwd {
-	row := srv.Auth().QueryRow(`SELECT id, salt, pwd, n, r, p FROM pwds WHERE id=?`, id)
-	res := &pwd{}
-	err := row.Scan(&res.ID, &res.Salt, &res.Pwd, &res.N, &res.R, &res.P)
-	if err == isql.ErrNoRows {
-		return nil
-	}
-	PanicOn(err)
-	return res
-}
-
-func setPwd(tlbx app.Tlbx, pwdtx sql.Tx, id ID, pwd, confirmPwd string) {
-	app.BadReqIf(pwd != confirmPwd, "pwds do not match")
-	validate.Str("pwd", pwd, tlbx, pwdMinLen, pwdMaxLen, pwdRegexs...)
-	salt := crypt.Bytes(scryptSaltLen)
-	pwdBs := crypt.ScryptKey([]byte(pwd), salt, scryptN, scryptR, scryptP, scryptKeyLen)
-	_, err := pwdtx.Exec(`INSERT INTO pwds (id, salt, pwd, n, r, p) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE salt=VALUE(salt), pwd=VALUE(pwd), n=VALUE(n), r=VALUE(r), p=VALUE(p)`, id, salt, pwdBs, scryptN, scryptR, scryptP)
+func updateSocial(tx sql.Tx, s *social.Social) {
+	qryArgs := sqlh.NewArgs(0)
+	qry := qryUpdate(qryArgs, s)
+	_, err := tx.Exec(qry, qryArgs.Is()...)
 	PanicOn(err)
 }
