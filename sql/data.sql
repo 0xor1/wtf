@@ -37,8 +37,8 @@ CREATE TABLE socials (
 );
 
 -- if you want users to be able to save arbitrary app config settings as a json blob
-DROP TABLE IF EXISTS jin;
-CREATE TABLE jin (
+DROP TABLE IF EXISTS jins;
+CREATE TABLE jins (
     id BINARY(16) NOT NULL,
     val VARCHAR(10000) NOT NULL,
     PRIMARY KEY id (id),
