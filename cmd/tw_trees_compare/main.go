@@ -13,7 +13,7 @@ import (
 	. "github.com/0xor1/tlbx/pkg/core"
 	j "github.com/0xor1/tlbx/pkg/json"
 	"github.com/0xor1/tlbx/pkg/web/app"
-	"github.com/0xor1/tlbx/pkg/web/app/user"
+	"github.com/0xor1/tlbx/pkg/web/app/user/auth"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
@@ -114,7 +114,7 @@ func runTW(inst, user, pwd, projectName string, treeK, treeH uint) {
 
 func runTrees(host, email, pwd, projectName string, treeK, treeH uint) {
 	c := app.NewClient(host)
-	me := (&user.Login{
+	me := (&auth.Login{
 		Email: email,
 		Pwd:   pwd,
 	}).MustDo(c)
@@ -128,7 +128,7 @@ func runTrees(host, email, pwd, projectName string, treeK, treeH uint) {
 	Println("projectId =", p.ID.String())
 
 	start := time.Now()
-	treesCreatePerfectKaryTree(me, c, p.ID, p.ID, 0, 0, treeK, treeH)
+	treesCreatePerfectKaryTree(*me, c, p.ID, p.ID, 0, 0, treeK, treeH)
 	Println()
 	Println("time to create tree (excluding root node)", time.Now().Sub(start))
 	Println("finished in Trees")
@@ -205,7 +205,7 @@ func twCreatePerfectKaryTree(rm *twReqMaker, tasklistId, parentTaskId, lastUsedN
 	return lastUsedNameIdx
 }
 
-func treesCreatePerfectKaryTree(me *user.User, c *app.Client, projectId, parentId ID, lastUsedNameIdx int64, currentDepth, k, h uint) int64 {
+func treesCreatePerfectKaryTree(me ID, c *app.Client, projectId, parentId ID, lastUsedNameIdx int64, currentDepth, k, h uint) int64 {
 	if currentDepth >= h {
 		return lastUsedNameIdx
 	}
@@ -219,13 +219,13 @@ func treesCreatePerfectKaryTree(me *user.User, c *app.Client, projectId, parentI
 			isParallel = false
 		}
 		t := (&task.Create{
-			Host:       me.ID,
+			Host:       me,
 			Project:    projectId,
 			Parent:     parentId,
 			PrevSib:    previousSiblingId,
 			Name:       int64Str(lastUsedNameIdx),
 			IsParallel: isParallel,
-			User:       &me.ID,
+			User:       &me,
 			TimeEst:    est,
 			CostEst:    est * 2,
 		}).MustDo(c)

@@ -13,9 +13,9 @@ import (
 	"github.com/0xor1/tlbx/pkg/field"
 	"github.com/0xor1/tlbx/pkg/ptr"
 	"github.com/0xor1/tlbx/pkg/web/app"
-	"github.com/0xor1/tlbx/pkg/web/app/auth/autheps"
 	"github.com/0xor1/tlbx/pkg/web/app/ratelimit"
 	"github.com/0xor1/tlbx/pkg/web/app/test"
+	"github.com/0xor1/tlbx/pkg/web/app/user/auth/autheps"
 	"github.com/stretchr/testify/assert"
 )
 

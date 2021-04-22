@@ -29,9 +29,9 @@ func Everything(t *testing.T) {
 		ratelimit.MeMware,
 		[]string{socialeps.AvatarBucket},
 		true,
-		func(name string, reg *auth.Register) {
+		func(r test.Rig, name string, reg *auth.Register) {
 			reg.AppData = &social.RegisterAppData{
-				Handle: name,
+				Handle: name + r.Unique(),
 				Alias:  name,
 			}
 		},
@@ -39,15 +39,11 @@ func Everything(t *testing.T) {
 			c.AppDataDefault = socialeps.AppDataDefault
 			c.AppDataExample = socialeps.AppDataExample
 			c.OnRegister = func(tlbx app.Tlbx, me ID, ad interface{}, txAdder sql.DoTxAdder) {
-				txAdder.Add(service.Get(tlbx).User().WriteTx(), func(tx sql.Tx) {
-					appData := ad.(*social.RegisterAppData)
-					socialeps.OnRegister(tlbx, me, appData, tx)
-				})
+				appData := ad.(*social.RegisterAppData)
+				socialeps.OnRegister(tlbx, me, appData, service.Get(tlbx).User().WriteTx())
 			}
 			c.OnDelete = func(tlbx app.Tlbx, me ID, txAdder sql.DoTxAdder) {
-				txAdder.Add(service.Get(tlbx).User().WriteTx(), func(tx sql.Tx) {
-					socialeps.OnDelete(tlbx, me, tx)
-				})
+				socialeps.OnDelete(tlbx, me, service.Get(tlbx).User().WriteTx())
 			}
 		})
 	defer r.CleanUp()
@@ -70,7 +66,7 @@ func Everything(t *testing.T) {
 	a.False(socials.More)
 
 	me := (&social.GetMe{}).MustDo(c)
-	a.Equal("ali", me.Handle)
+	a.True(strings.HasPrefix(me.Handle, "ali"))
 	a.Equal("ali", me.Alias)
 	a.False(me.HasAvatar)
 

@@ -9,7 +9,7 @@ import (
 	"github.com/0xor1/tlbx/pkg/field"
 	"github.com/0xor1/tlbx/pkg/json"
 	"github.com/0xor1/tlbx/pkg/web/app"
-	"github.com/0xor1/tlbx/pkg/web/app/user"
+	"github.com/0xor1/tlbx/pkg/web/app/user/social"
 )
 
 type Project struct {
@@ -199,7 +199,7 @@ func (a *Delete) MustDo(c *app.Client) {
 }
 
 type User struct {
-	user.User
+	social.Social
 	Role     cnsts.Role `json:"role"`
 	IsActive bool       `json:"isActive"`
 	TimeEst  uint64     `json:"timeEst"`

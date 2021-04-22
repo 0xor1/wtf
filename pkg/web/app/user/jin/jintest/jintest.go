@@ -3,17 +3,12 @@ package jintest
 import (
 	"testing"
 
-	. "github.com/0xor1/tlbx/pkg/core"
 	"github.com/0xor1/tlbx/pkg/json"
-	"github.com/0xor1/tlbx/pkg/web/app"
-	"github.com/0xor1/tlbx/pkg/web/app/user/auth/autheps"
 	"github.com/0xor1/tlbx/pkg/web/app/config"
+	"github.com/0xor1/tlbx/pkg/web/app/ratelimit"
+	"github.com/0xor1/tlbx/pkg/web/app/test"
 	"github.com/0xor1/tlbx/pkg/web/app/user/jin"
 	"github.com/0xor1/tlbx/pkg/web/app/user/jin/jineps"
-	"github.com/0xor1/tlbx/pkg/web/app/ratelimit"
-	"github.com/0xor1/tlbx/pkg/web/app/service"
-	"github.com/0xor1/tlbx/pkg/web/app/service/sql"
-	"github.com/0xor1/tlbx/pkg/web/app/test"
 	"github.com/stretchr/testify/assert"
 )
 

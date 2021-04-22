@@ -7,9 +7,9 @@ import (
 	. "github.com/0xor1/tlbx/pkg/core"
 	"github.com/0xor1/tlbx/pkg/json"
 	"github.com/0xor1/tlbx/pkg/web/app"
-	"github.com/0xor1/tlbx/pkg/web/app/user/jin"
 	"github.com/0xor1/tlbx/pkg/web/app/service"
 	"github.com/0xor1/tlbx/pkg/web/app/sql"
+	"github.com/0xor1/tlbx/pkg/web/app/user/jin"
 
 	"github.com/0xor1/tlbx/pkg/web/app/session/me"
 	sqlh "github.com/0xor1/tlbx/pkg/web/app/sql"
@@ -45,7 +45,7 @@ var (
 				} else {
 					qry = qryInsert(qryArgs, me, args.Val)
 				}
-				_, err := srv.Data().Exec(qry, qryArgs.Is()...)
+				_, err := srv.User().Exec(qry, qryArgs.Is()...)
 				PanicOn(err)
 				return nil
 			},
@@ -71,7 +71,7 @@ var (
 				res := &json.Json{}
 				qryArgs := sql.NewArgs(0)
 				qry := qrySelect(qryArgs, me)
-				sqlh.PanicIfIsntNoRows(srv.Data().QueryRow(qry, qryArgs.Is()...).Scan(&res))
+				sqlh.PanicIfIsntNoRows(srv.User().QueryRow(qry, qryArgs.Is()...).Scan(&res))
 				return res
 			},
 		},

@@ -5,10 +5,10 @@ import (
 	"github.com/0xor1/tlbx/cmd/todo/pkg/item/itemeps"
 	"github.com/0xor1/tlbx/cmd/todo/pkg/list/listeps"
 	"github.com/0xor1/tlbx/pkg/web/app"
-	"github.com/0xor1/tlbx/pkg/web/app/auth/autheps"
 	"github.com/0xor1/tlbx/pkg/web/app/ratelimit"
 	"github.com/0xor1/tlbx/pkg/web/app/service"
 	"github.com/0xor1/tlbx/pkg/web/app/session"
+	"github.com/0xor1/tlbx/pkg/web/app/user/auth/autheps"
 )
 
 func main() {

@@ -7,8 +7,10 @@ import (
 	"github.com/0xor1/tlbx/pkg/web/app"
 	"github.com/0xor1/tlbx/pkg/web/app/config"
 	"github.com/0xor1/tlbx/pkg/web/app/ratelimit"
+	"github.com/0xor1/tlbx/pkg/web/app/service"
 	"github.com/0xor1/tlbx/pkg/web/app/service/sql"
 	"github.com/0xor1/tlbx/pkg/web/app/test"
+	"github.com/0xor1/tlbx/pkg/web/app/user/auth/autheps"
 	"github.com/0xor1/tlbx/pkg/web/app/user/fcm"
 	"github.com/0xor1/tlbx/pkg/web/app/user/fcm/fcmeps"
 	"github.com/stretchr/testify/assert"
@@ -24,13 +26,18 @@ func Everything(t *testing.T) {
 		ratelimit.MeMware,
 		nil,
 		true,
-		nil)
+		nil,
+		func(c *autheps.Config) {
+			c.OnLogout = func(tlbx app.Tlbx, me ID, txAdder sql.DoTxAdder) {
+				fcmeps.OnLogout(tlbx, me, service.Get(tlbx).User().WriteTx())
+			}
+		})
 	defer r.CleanUp()
 
 	ac := r.Ali().Client()
 
 	// // test fcm eps
-	fcmToken := "123:abc"
+	fcmToken := "123:abc" + r.Unique()
 	(&fcm.SetEnabled{
 		Val: false,
 	}).MustDo(ac)
@@ -86,6 +93,13 @@ func Everything(t *testing.T) {
 		Token: fcmToken,
 	}).MustDo(ac)
 	a.False(client1.Equal(*client2))
+
+	// c := r.NewClient()
+	// (&auth.Login{
+	// 	Email: r.Ali().Email(),
+	// 	Pwd:   r.Ali().Pwd(),
+	// }).MustDo(c)
+	// (&auth.Logout{}).MustDo(c)
 
 	// toggle off and back on to test sending fcmEnabled:true/false data push
 	(&fcm.SetEnabled{

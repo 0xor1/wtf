@@ -14,7 +14,7 @@ import "github.com/0xor1/tlbx/pkg/web/app"
 import sqlh "github.com/0xor1/tlbx/pkg/web/app/sql"
 
 //line socialeps.sql:4
-import "github.com/0xor1/tlbx/pkg/web/app/social"
+import "github.com/0xor1/tlbx/pkg/web/app/user/social"
 
 //line socialeps.sql:6
 import (

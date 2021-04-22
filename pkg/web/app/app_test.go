@@ -9,19 +9,19 @@ import (
 	. "github.com/0xor1/tlbx/pkg/core"
 	"github.com/0xor1/tlbx/pkg/json"
 	"github.com/0xor1/tlbx/pkg/web/app"
-	"github.com/0xor1/tlbx/pkg/web/app/auth/authtest"
 	"github.com/0xor1/tlbx/pkg/web/app/config"
 	"github.com/0xor1/tlbx/pkg/web/app/ratelimit"
 	"github.com/0xor1/tlbx/pkg/web/app/test"
+	"github.com/0xor1/tlbx/pkg/web/app/user/social/socialtest"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func Test(t *testing.T) {
-	// use autheps here because it's a common bundled
+	// use socialeps here because it's a common bundled
 	// set of endpoints that tests many of app.go
 	// functionality
-	authtest.Everything(t)
+	socialtest.Everything(t)
 
 	// Now test all the functionality that autheps tests
 	// doesnt use, i.e. mdo/upstreams/downstreams/redirects

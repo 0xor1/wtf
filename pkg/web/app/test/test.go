@@ -84,7 +84,7 @@ func (u *testUser) Pwd() string {
 type rig struct {
 	rootHandler http.HandlerFunc
 	unique      string
-	register    func(string, *auth.Register)
+	register    func(Rig, string, *auth.Register)
 	ali         *testUser
 	bob         *testUser
 	cat         *testUser
@@ -172,7 +172,7 @@ func NewRig(
 	rateLimitMware func(iredis.Pool, ...int) func(app.Tlbx),
 	buckets []string,
 	useAuth bool,
-	register func(name string, reg *auth.Register),
+	register func(r Rig, name string, reg *auth.Register),
 	configAuth ...func(*autheps.Config),
 ) Rig {
 	r := &rig{
@@ -255,7 +255,7 @@ func (r *rig) createUser(handle, emailSuffix, pwd string) *testUser {
 			Pwd:   pwd,
 		}
 		if r.register != nil {
-			r.register(handle, reg)
+			r.register(r, handle, reg)
 		}
 		(reg).MustDo(c)
 
