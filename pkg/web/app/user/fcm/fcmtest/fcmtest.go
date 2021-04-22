@@ -10,6 +10,7 @@ import (
 	"github.com/0xor1/tlbx/pkg/web/app/service"
 	"github.com/0xor1/tlbx/pkg/web/app/service/sql"
 	"github.com/0xor1/tlbx/pkg/web/app/test"
+	"github.com/0xor1/tlbx/pkg/web/app/user/auth"
 	"github.com/0xor1/tlbx/pkg/web/app/user/auth/autheps"
 	"github.com/0xor1/tlbx/pkg/web/app/user/fcm"
 	"github.com/0xor1/tlbx/pkg/web/app/user/fcm/fcmeps"
@@ -29,7 +30,9 @@ func Everything(t *testing.T) {
 		nil,
 		func(c *autheps.Config) {
 			c.OnLogout = func(tlbx app.Tlbx, me ID, txAdder sql.DoTxAdder) {
-				fcmeps.OnLogout(tlbx, me, service.Get(tlbx).User().WriteTx())
+				txAdder.Add(service.Get(tlbx).User().WriteTx(), func(tx sql.Tx) {
+					fcmeps.OnLogout(tlbx, me, tx)
+				})
 			}
 		})
 	defer r.CleanUp()
@@ -86,6 +89,14 @@ func Everything(t *testing.T) {
 	}).MustDo(ac)
 	a.False(client1.Equal(*client2))
 
+	(&fcm.SetEnabled{
+		Val: false,
+	}).MustDo(ac)
+
+	(&fcm.SetEnabled{
+		Val: true,
+	}).MustDo(ac)
+
 	// this 6th topic should cause the oldest to be bumped out
 	// leaving this as the newest of the allowed 5
 	client2 = (&fcm.Register{
@@ -94,12 +105,12 @@ func Everything(t *testing.T) {
 	}).MustDo(ac)
 	a.False(client1.Equal(*client2))
 
-	// c := r.NewClient()
-	// (&auth.Login{
-	// 	Email: r.Ali().Email(),
-	// 	Pwd:   r.Ali().Pwd(),
-	// }).MustDo(c)
-	// (&auth.Logout{}).MustDo(c)
+	c := r.NewClient()
+	(&auth.Login{
+		Email: r.Ali().Email(),
+		Pwd:   r.Ali().Pwd(),
+	}).MustDo(c)
+	(&auth.Logout{}).MustDo(c)
 
 	// toggle off and back on to test sending fcmEnabled:true/false data push
 	(&fcm.SetEnabled{
