@@ -5,7 +5,7 @@ RUN ["sed", "-i", "s/exec \"$@\"/echo \"not running $@\"/", "/usr/local/bin/dock
 
 ENV MYSQL_ROOT_PASSWORD=root
 
-COPY cmd/todo/sql/auth.sql /docker-entrypoint-initdb.d/
+COPY cmd/todo/sql/users.sql /docker-entrypoint-initdb.d/
 COPY cmd/todo/sql/data.sql /docker-entrypoint-initdb.d/
 
 RUN ["/usr/local/bin/docker-entrypoint.sh", "mysqld", "--datadir", "/initialized-db", "--aria-log-dir-path", "/initialized-db"]

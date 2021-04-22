@@ -91,7 +91,7 @@ func New(tlbx app.Tlbx, gameType string, game Game) {
 	validateUserIsntInAnActiveGame(tlbx, "create")
 	b.UpdatedOn = NowMilli()
 	srv := service.Get(tlbx)
-	tx := srv.Data().Begin()
+	tx := srv.Data().WriteTx()
 	defer tx.Rollback()
 	// assign new anon session id for a new game so no clashes with old finished games
 	id := me.Get(tlbx).ID()
@@ -108,7 +108,7 @@ func New(tlbx app.Tlbx, gameType string, game Game) {
 func Join(tlbx app.Tlbx, maxPlayers uint8, gameType string, game ID, dst Game) Game {
 	validateUserIsntInAnActiveGame(tlbx, "join")
 	srv := service.Get(tlbx)
-	tx := srv.Data().Begin()
+	tx := srv.Data().WriteTx()
 	defer tx.Rollback()
 	g := read(tlbx, tx, true, gameType, game, nil, dst)
 	b := g.GetBase()
@@ -126,7 +126,7 @@ func Join(tlbx app.Tlbx, maxPlayers uint8, gameType string, game ID, dst Game) G
 
 func Start(tlbx app.Tlbx, minPlayers uint8, randomizePlayerOrder bool, gameType string, dst Game, customSetup func(game Game)) Game {
 	srv := service.Get(tlbx)
-	tx := srv.Data().Begin()
+	tx := srv.Data().WriteTx()
 	defer tx.Rollback()
 	g, _ := getUsersActiveGame(tlbx, tx, true, gameType, dst)
 	b := g.GetBase()
@@ -154,7 +154,7 @@ func Start(tlbx app.Tlbx, minPlayers uint8, randomizePlayerOrder bool, gameType 
 }
 
 func TakeTurn(tlbx app.Tlbx, gameType string, dst Game, takeTurn func(game Game)) Game {
-	tx := service.Get(tlbx).Data().Begin()
+	tx := service.Get(tlbx).Data().WriteTx()
 	defer tx.Rollback()
 	g, _ := getUsersActiveGame(tlbx, tx, true, gameType, dst)
 	app.BadReqIf(g == nil, "you are not in an active game")
@@ -171,7 +171,7 @@ func TakeTurn(tlbx app.Tlbx, gameType string, dst Game, takeTurn func(game Game)
 
 func Abandon(tlbx app.Tlbx, gameType string, dst Game) {
 	srv := service.Get(tlbx)
-	tx := srv.Data().Begin()
+	tx := srv.Data().WriteTx()
 	defer tx.Rollback()
 	g, _ := getUsersActiveGame(tlbx, tx, true, gameType, dst)
 	if g != nil && g.GetBase().IsActive() {

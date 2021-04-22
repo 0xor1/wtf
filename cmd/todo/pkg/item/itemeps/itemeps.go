@@ -47,7 +47,7 @@ var (
 					CreatedOn: NowMilli(),
 					Name:      args.Name,
 				}
-				tx := srv.Data().Begin()
+				tx := srv.Data().WriteTx()
 				defer tx.Rollback()
 				_, err := tx.Exec(`INSERT INTO items (user, list, id, createdOn, name, completedOn) VALUES (?, ?, ?, ?, ?, ?)`, me, args.List, res.ID, res.CreatedOn, res.Name, time.Time{})
 				PanicOn(err)
@@ -153,7 +153,7 @@ var (
 				}
 				if changeMade {
 					srv := service.Get(tlbx)
-					tx := srv.Data().Begin()
+					tx := srv.Data().WriteTx()
 					defer tx.Rollback()
 					sqlRes, err := tx.Exec(`UPDATE items SET name=?, completedOn=? WHERE user=? AND list=? AND id=?`, item.Name, ptr.TimeOr(item.CompletedOn, time.Time{}), me, args.List, item.ID)
 					PanicOn(err)
@@ -198,7 +198,7 @@ var (
 				queryArgs := make([]interface{}, 0, idsLen+2)
 				queryArgs = append(queryArgs, me, args.List)
 				queryArgs = append(queryArgs, args.IDs.ToIs()...)
-				tx := srv.Data().Begin()
+				tx := srv.Data().WriteTx()
 				defer tx.Rollback()
 				_, err := srv.Data().Exec(`DELETE FROM items WHERE user=? AND list=?`+sqlh.InCondition(true, "id", idsLen), queryArgs...)
 				PanicOn(err)

@@ -47,8 +47,8 @@ type Config struct {
 		Cache     iredis.Pool
 	}
 	SQL struct {
-		Auth isql.ReplicaSet
-		Data isql.ReplicaSet
+		Users isql.ReplicaSet
+		Data  isql.ReplicaSet
 	}
 	Email email.Client
 	Store store.Client
@@ -77,8 +77,8 @@ func GetBase(file ...string) *config.Config {
 	c.SetDefault("app.confirmChangeEmailFmtLink", "http://localhost:8081/#/confirmChangeEmail?me=%s&code=%s")
 	c.SetDefault("redis.rateLimit", "localhost:6379")
 	c.SetDefault("redis.cache", "localhost:6379")
-	c.SetDefault("sql.auth.primary", "auth:C0-Mm-0n-Auth@tcp(localhost:3306)/auth?parseTime=true&loc=UTC&multiStatements=true")
-	c.SetDefault("sql.auth.slaves", []string{})
+	c.SetDefault("sql.users.primary", "users:C0-Mm-0n-U5-3r5@tcp(localhost:3306)/users?parseTime=true&loc=UTC&multiStatements=true")
+	c.SetDefault("sql.users.slaves", []string{})
 	c.SetDefault("sql.data.primary", "data:C0-Mm-0n-Da-Ta@tcp(localhost:3306)/data?parseTime=true&loc=UTC&multiStatements=true")
 	c.SetDefault("sql.data.slaves", []string{})
 	c.SetDefault("sql.connMaxLifetime", 5*time.Second)
@@ -138,11 +138,11 @@ func GetProcessed(c *config.Config) *Config {
 	sqlMaxOpenConns := c.GetInt("sql.maxOpenConns")
 
 	var err error
-	res.SQL.Auth, err = isql.NewReplicaSet(c.GetString("sql.auth.primary"), c.GetStringSlice("sql.auth.slaves")...)
+	res.SQL.Users, err = isql.NewReplicaSet(c.GetString("sql.users.primary"), c.GetStringSlice("sql.users.slaves")...)
 	PanicOn(err)
-	res.SQL.Auth.SetConnMaxLifetime(sqlMaxLifetime)
-	res.SQL.Auth.SetMaxIdleConns(sqlMaxIdleConns)
-	res.SQL.Auth.SetMaxOpenConns(sqlMaxOpenConns)
+	res.SQL.Users.SetConnMaxLifetime(sqlMaxLifetime)
+	res.SQL.Users.SetMaxIdleConns(sqlMaxIdleConns)
+	res.SQL.Users.SetMaxOpenConns(sqlMaxOpenConns)
 
 	res.SQL.Data, err = isql.NewReplicaSet(c.GetString("sql.data.primary"), c.GetStringSlice("sql.data.slaves")...)
 	PanicOn(err)

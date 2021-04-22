@@ -14,11 +14,11 @@ import (
 	"github.com/0xor1/tlbx/pkg/log"
 	"github.com/0xor1/tlbx/pkg/store"
 	"github.com/0xor1/tlbx/pkg/web/app"
-	"github.com/0xor1/tlbx/pkg/web/app/auth"
-	"github.com/0xor1/tlbx/pkg/web/app/auth/autheps"
 	"github.com/0xor1/tlbx/pkg/web/app/config"
 	"github.com/0xor1/tlbx/pkg/web/app/service"
 	"github.com/0xor1/tlbx/pkg/web/app/session"
+	"github.com/0xor1/tlbx/pkg/web/app/user/auth"
+	"github.com/0xor1/tlbx/pkg/web/app/user/auth/autheps"
 )
 
 const (
@@ -43,7 +43,7 @@ type Rig interface {
 	Dan() User
 	// services
 	Cache() iredis.Pool
-	Auth() isql.ReplicaSet
+	User() isql.ReplicaSet
 	Data() isql.ReplicaSet
 	Email() email.Client
 	Store() store.Client
@@ -92,7 +92,7 @@ type rig struct {
 	log         log.Log
 	rateLimit   iredis.Pool
 	cache       iredis.Pool
-	auth        isql.ReplicaSet
+	user        isql.ReplicaSet
 	data        isql.ReplicaSet
 	email       email.Client
 	store       store.Client
@@ -136,8 +136,8 @@ func (r *rig) Cache() iredis.Pool {
 	return r.cache
 }
 
-func (r *rig) Auth() isql.ReplicaSet {
-	return r.auth
+func (r *rig) User() isql.ReplicaSet {
+	return r.user
 }
 
 func (r *rig) Data() isql.ReplicaSet {
@@ -184,7 +184,7 @@ func NewRig(
 		email:     config.Email,
 		store:     config.Store,
 		fcm:       config.FCM,
-		auth:      config.SQL.Auth,
+		user:      config.SQL.Users,
 		data:      config.SQL.Data,
 		useAuth:   useAuth,
 	}
@@ -211,7 +211,7 @@ func NewRig(
 					config.Web.Session.EncrKey32s,
 					config.Web.Session.Secure),
 				rateLimitMware(r.rateLimit, 1000000),
-				service.Mware(r.cache, r.auth, r.data, r.email, r.store, r.fcm),
+				service.Mware(r.cache, r.user, r.data, r.email, r.store, r.fcm),
 			}
 			c.Endpoints = eps
 			c.Serve = func(h http.HandlerFunc) {

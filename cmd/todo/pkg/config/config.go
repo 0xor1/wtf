@@ -6,7 +6,7 @@ import (
 
 func Get(file ...string) *config.Config {
 	c := config.GetBase(file...)
-	c.SetDefault("sql.auth.primary", "todo_auth:C0-Mm-0n-Auth@tcp(localhost:3306)/todo_auth?parseTime=true&loc=UTC&multiStatements=true")
+	c.SetDefault("sql.users.primary", "todo_users:C0-Mm-0n-U5-3r5@tcp(localhost:3306)/todo_users?parseTime=true&loc=UTC&multiStatements=true")
 	c.SetDefault("sql.data.primary", "todo_data:C0-Mm-0n-Da-Ta@tcp(localhost:3306)/todo_data?parseTime=true&loc=UTC&multiStatements=true")
 	return config.GetProcessed(c)
 }

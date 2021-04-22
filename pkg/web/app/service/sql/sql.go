@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"context"
 	"database/sql"
 
 	. "github.com/0xor1/tlbx/pkg/core"
@@ -24,7 +25,8 @@ func Get(tlbx app.Tlbx, name string) Client {
 
 type Client interface {
 	Base() isql.ReplicaSet
-	Begin() Tx
+	ReadTx() Tx
+	WriteTx() Tx
 	ClientCore
 }
 
@@ -119,6 +121,7 @@ type tx struct {
 	tx        isql.Tx
 	tlbx      app.Tlbx
 	sqlClient *client
+	scrub     func()
 	done      bool
 }
 
@@ -152,36 +155,87 @@ func (t *tx) Rollback() {
 				PanicOn(err)
 			}
 			t.done = true
+			t.scrub()
 		}, "ROLLBACK")
 	}
 }
 
 func (t *tx) Commit() {
-	t.sqlClient.do(func(q string) { PanicOn(t.tx.Commit()); t.done = true }, "COMMIT")
+	t.sqlClient.do(func(q string) {
+		PanicOn(t.tx.Commit())
+		t.done = true
+		t.scrub()
+	}, "COMMIT")
 }
 
 type client struct {
-	tlbx app.Tlbx
-	name string
-	sql  isql.ReplicaSet
+	tlbx    app.Tlbx
+	name    string
+	sql     isql.ReplicaSet
+	readTx  *tx
+	writeTx *tx
 }
 
 func (c *client) Base() isql.ReplicaSet {
 	return c.sql
 }
 
-func (c *client) Begin() Tx {
-	var t isql.Tx
-	var err error
-	c.do(func(s string) {
-		t, err = c.sql.Primary().Begin()
-	}, "START TRANSACTION")
-	PanicOn(err)
-	return &tx{
-		tx:        t,
-		tlbx:      c.tlbx,
-		sqlClient: c,
+func (c *client) ReadTx(isoLevel ...sql.IsolationLevel) Tx {
+	if c.readTx == nil {
+		var t isql.Tx
+		var err error
+		c.do(func(s string) {
+			il := sql.LevelDefault
+			if len(isoLevel) > 0 {
+				il = isoLevel[0]
+			}
+			t, err = c.sql.RandSlave().BeginTx(
+				context.Background(),
+				&sql.TxOptions{
+					Isolation: il,
+					ReadOnly:  true,
+				})
+		}, "START READ TRANSACTION")
+		PanicOn(err)
+		c.readTx = &tx{
+			tx:        t,
+			tlbx:      c.tlbx,
+			sqlClient: c,
+			scrub: func() {
+				c.readTx = nil
+			},
+		}
 	}
+	return c.readTx
+}
+
+func (c *client) WriteTx(isoLevel ...sql.IsolationLevel) Tx {
+	if c.writeTx == nil {
+		var t isql.Tx
+		var err error
+		c.do(func(s string) {
+			il := sql.LevelDefault
+			if len(isoLevel) > 0 {
+				il = isoLevel[0]
+			}
+			t, err = c.sql.Primary().BeginTx(
+				context.Background(),
+				&sql.TxOptions{
+					Isolation: il,
+					ReadOnly:  false,
+				})
+		}, "START WRITE TRANSACTION")
+		PanicOn(err)
+		c.writeTx = &tx{
+			tx:        t,
+			tlbx:      c.tlbx,
+			sqlClient: c,
+			scrub: func() {
+				c.writeTx = nil
+			},
+		}
+	}
+	return c.writeTx
 }
 
 func (c *client) Exec(query string, args ...interface{}) (res sql.Result, err error) {

@@ -87,7 +87,7 @@ func (c *client) AsyncSend(topic IDs, data map[string]string, timeout time.Durat
 var clientHeaderName = "X-Fcm-Client"
 var fcmTypeName = "X-Fcm-Type"
 
-// this should only be used by AsyncSend and in usereps
+// this should only be used by AsyncSend and in fcmeps
 func (c *client) RawAsyncSend(fcmType string, tokens []string, data map[string]string, timeout time.Duration) {
 	PanicIf(fcmType == "", "fcmType must be none empty string")
 	_, fcmTypeExists := data[fcmTypeName]

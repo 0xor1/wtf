@@ -157,7 +157,7 @@ var (
 				queryArgs := make([]interface{}, 0, idsLen+1)
 				queryArgs = append(queryArgs, me)
 				queryArgs = append(queryArgs, args.IDs.ToIs()...)
-				tx := srv.Data().Begin()
+				tx := srv.Data().WriteTx()
 				defer tx.Rollback()
 				_, err := tx.Exec(`DELETE FROM lists WHERE user=?`+sqlh.InCondition(true, "id", idsLen), queryArgs...)
 				PanicOn(err)
@@ -180,7 +180,7 @@ var (
 )
 
 func OnDelete(tlbx app.Tlbx, me ID, tx sql.DoTxAdder) {
-	tx.Add(service.Get(tlbx).Data().Begin(), func(tx sql.Tx) {
+	tx.Add(service.Get(tlbx).Data().WriteTx(), func(tx sql.Tx) {
 		_, err := tx.Exec(`DELETE FROM lists WHERE user=?`, me)
 		PanicOn(err)
 		_, err = tx.Exec(`DELETE FROM items WHERE user=?`, me)

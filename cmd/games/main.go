@@ -23,7 +23,7 @@ func main() {
 				config.Web.Session.EncrKey32s,
 				config.Web.Session.Secure),
 			ratelimit.MeMware(config.Redis.RateLimit, config.Web.RateLimit),
-			service.Mware(config.Redis.Cache, config.SQL.Auth, config.SQL.Data, config.Email, config.Store, config.FCM),
+			service.Mware(config.Redis.Cache, config.SQL.Users, config.SQL.Data, config.Email, config.Store, config.FCM),
 		}
 		c.Version = config.Version
 		c.Log = config.Log
