@@ -373,18 +373,17 @@ func New(
 				defer tx.Rollback()
 				auth := getAuth(tx, nil, &m)
 				app.BadReqIf(!bytes.Equal(auth.Pwd, crypt.ScryptKey([]byte(args.Pwd), auth.Salt, auth.N, auth.R, auth.P, scryptKeyLen)), "incorrect pwd")
-				
 				appTx := sql.NewDoTxs()
 				c.OnDelete(tlbx, m, appTx)
 				defer appTx.Rollback()
 				appTx.Do()
-				appTx.Commit()
 				qryArgs := sqlh.NewArgs(0)
 				qry := qryDelete(qryArgs, m)
 				_, err := tx.Exec(qry, qryArgs.Is()...)
 				PanicOn(err)
-				me.Del(tlbx)
+				appTx.Commit()
 				tx.Commit()
+				me.Del(tlbx)
 				return nil
 			},
 		},
