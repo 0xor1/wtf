@@ -260,7 +260,7 @@ func (r *rig) createUser(handle, emailSuffix, pwd string) *testUser {
 		(reg).MustDo(c)
 
 		var code string
-		row := r.Auth().Primary().QueryRow(`SELECT activateCode FROM auths WHERE email=?`, email)
+		row := r.User().Primary().QueryRow(`SELECT activateCode FROM auths WHERE email=?`, email)
 		PanicOn(row.Scan(&code))
 
 		(&auth.Activate{

@@ -19,24 +19,18 @@ import (
 
 func OnLogout(tlbx app.Tlbx, me ID, tx sql.Tx) {
 	srv := service.Get(tlbx)
-	tokens := make([]string, 0, 5)
+	tokens := getDistinctTokens(tx, me)
 	qryArgs := sqlh.NewArgs(0)
-	qry := qryDistinctTokens(qryArgs, me)
-	tx.Query(func(rows isql.Rows) {
-		for rows.Next() {
-			token := ""
-			PanicOn(rows.Scan(&token))
-			tokens = append(tokens, token)
-		}
-	}, qry, qryArgs.Is()...)
-	qry = qryDelete(qryArgs, me)
+	qry := qryDelete(qryArgs, me, nil, nil)
 	_, err := tx.Exec(qry, qryArgs.Is()...)
 	PanicOn(err)
 	srv.FCM().RawAsyncSend("logout", tokens, map[string]string{}, 0)
 }
 
-var (
-	Eps = []*app.Endpoint{
+func New(
+	validateFcmTopic func(app.Tlbx, IDs) sql.Tx,
+) []*app.Endpoint {
+	return []*app.Endpoint{
 		{
 			Description:  "set fcm enabled",
 			Path:         (&fcm.SetEnabled{}).Path(),
@@ -61,21 +55,16 @@ var (
 				me := me.AuthedGet(tlbx)
 				tx := service.Get(tlbx).User().WriteTx()
 				defer tx.Rollback()
-				f := getUser(tx, nil, &me)
-				if f.FcmEnabled == args.Val {
+				enabled := getEnabled(tx, me)
+				if enabled == args.Val {
 					// not changing anything
 					return nil
 				}
-				u.FcmEnabled = &args.Val
-				updateUser(tx, u)
-				tokens := make([]string, 0, 5)
-				tx.Query(func(rows isql.Rows) {
-					for rows.Next() {
-						token := ""
-						PanicOn(rows.Scan(&token))
-						tokens = append(tokens, token)
-					}
-				}, `SELECT DISTINCT token FROM fcmTokens WHERE user=?`, me)
+				qryArgs := sqlh.NewArgs(0)
+				qry := qrySetEnabled(qryArgs, me, args.Val)
+				_, err := tx.Exec(qry, qryArgs.Is()...)
+				PanicOn(err)
+				tokens := getDistinctTokens(tx, me)
 				tx.Commit()
 				if len(tokens) == 0 {
 					// no tokens to notify
@@ -117,26 +106,27 @@ var (
 					client = ptr.ID(tlbx.NewID())
 				}
 				me := me.AuthedGet(tlbx)
-				tx := service.Get(tlbx).User().Begin()
+				tx := service.Get(tlbx).User().WriteTx()
 				defer tx.Rollback()
-				u := getUser(tx, nil, &me)
-				app.BadReqIf(u.FcmEnabled == nil || !*u.FcmEnabled, "fcm not enabled for user, please enable first then register for topics")
+				enabled := getEnabled(tx, me)
+				app.BadReqIf(!enabled, "fcm not enabled for user, please enable first then register for topics")
 				// this query is used to get a users 5th token createdOn value if they have one
-				row := tx.QueryRow(`SELECT createdOn FROM fcmTokens WHERE user=? ORDER BY createdOn DESC LIMIT 4, 1`, me)
+				qryArgs := sqlh.NewArgs(0)
+				qry := qryFifthYoungestToken(qryArgs, me)
+				row := tx.QueryRow(qry, qryArgs.Is()...)
 				fifthYoungestTokenCreatedOn := time.Time{}
 				sqlh.PanicIfIsntNoRows(row.Scan(&fifthYoungestTokenCreatedOn))
 				if !fifthYoungestTokenCreatedOn.IsZero() {
 					// this user has 5 topics they're subscribed too already so delete the older ones
 					// to make room for this new one
-					_, err := tx.Exec(`DELETE FROM fcmTokens WHERE user=? AND createdOn<=?`, me, fifthYoungestTokenCreatedOn)
-					PanicOn(err)
+					deleteTokens(tx, me, nil, &fifthYoungestTokenCreatedOn)
 				}
-				appTx, err := validateFcmTopic(tlbx, args.Topic)
+				appTx := validateFcmTopic(tlbx, args.Topic)
 				if appTx != nil {
 					defer appTx.Rollback()
 				}
-				PanicOn(err)
-				_, err = tx.Exec(`INSERT INTO fcmTokens (topic, token, user, client, createdOn) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE topic=VALUES(topic), token=VALUES(token), user=VALUES(user), client=VALUES(client), createdOn=VALUES(createdOn)`, args.Topic.StrJoin("_"), args.Token, me, client, tlbx.Start())
+				qry = qryInsert(qryArgs, args.Topic.StrJoin("_"), args.Token, me, *client, tlbx.Start())
+				_, err := tx.Exec(qry, qryArgs.Is()...)
 				PanicOn(err)
 				tx.Commit()
 				if appTx != nil {
@@ -166,13 +156,42 @@ var (
 			Handler: func(tlbx app.Tlbx, a interface{}) interface{} {
 				args := a.(*fcm.Unregister)
 				me := me.AuthedGet(tlbx)
-				tx := service.Get(tlbx).User().Begin()
+				tx := service.Get(tlbx).User().WriteTx()
 				defer tx.Rollback()
-				_, err := tx.Exec(`DELETE FROM fcmTokens WHERE user=? AND client=?`, me, args.Client)
-				PanicOn(err)
+				deleteTokens(tx, me, &args.Client, nil)
 				tx.Commit()
 				return nil
 			},
 		},
 	}
-)
+}
+
+func getEnabled(tx sql.Tx, me ID) bool {
+	qryArgs := sqlh.NewArgs(0)
+	qry := qryGetEnabled(qryArgs, me)
+	row := tx.QueryRow(qry, qryArgs.Is()...)
+	enabled := false
+	sqlh.PanicIfIsntNoRows(row.Scan(&enabled))
+	return enabled
+}
+
+func getDistinctTokens(tx sql.Tx, me ID) []string {
+	tokens := make([]string, 0, 5)
+	qryArgs := sqlh.NewArgs(0)
+	qry := qryDistinctTokens(qryArgs, me)
+	PanicOn(tx.Query(func(rows isql.Rows) {
+		for rows.Next() {
+			token := ""
+			PanicOn(rows.Scan(&token))
+			tokens = append(tokens, token)
+		}
+	}, qry, qryArgs.Is()...))
+	return tokens
+}
+
+func deleteTokens(tx sql.Tx, me ID, client *ID, createdOn *time.Time) {
+	qryArgs := sqlh.NewArgs(0)
+	qry := qryDelete(qryArgs, me, client, createdOn)
+	_, err := tx.Exec(qry, qryArgs.Is()...)
+	PanicOn(err)
+}

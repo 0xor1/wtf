@@ -25,8 +25,8 @@ func Get(tlbx app.Tlbx, name string) Client {
 
 type Client interface {
 	Base() isql.ReplicaSet
-	ReadTx() Tx
-	WriteTx() Tx
+	ReadTx(isoLevel ...sql.IsolationLevel) Tx
+	WriteTx(isoLevel ...sql.IsolationLevel) Tx
 	ClientCore
 }
 
