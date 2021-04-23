@@ -48,7 +48,7 @@ func Everything(t *testing.T) {
 		})
 	defer r.CleanUp()
 
-	c := r.Ali().Client()
+	ac := r.Ali().Client()
 
 	socials := (&social.Get{
 		IDs: IDs{
@@ -57,7 +57,7 @@ func Everything(t *testing.T) {
 			r.Bob().ID(),
 			r.Cat().ID(),
 		},
-	}).MustDo(c)
+	}).MustDo(ac)
 	a.Equal(4, len(socials.Set))
 	a.True(socials.Set[0].ID.Equal(r.Dan().ID()))
 	a.True(socials.Set[1].ID.Equal(r.Ali().ID()))
@@ -65,7 +65,7 @@ func Everything(t *testing.T) {
 	a.True(socials.Set[3].ID.Equal(r.Cat().ID()))
 	a.False(socials.More)
 
-	me := (&social.GetMe{}).MustDo(c)
+	me := (&social.GetMe{}).MustDo(ac)
 	a.True(strings.HasPrefix(me.Handle, "ali"))
 	a.Equal("ali", me.Alias)
 	a.False(me.HasAvatar)
@@ -75,23 +75,23 @@ func Everything(t *testing.T) {
 	(&social.Update{
 		Handle: &field.String{V: handle},
 		Alias:  &field.String{V: alias},
-	}).MustDo(c)
+	}).MustDo(ac)
 
-	me = (&social.GetMe{}).MustDo(c)
+	me = (&social.GetMe{}).MustDo(ac)
 	a.Equal(handle, me.Handle)
 	a.Equal(alias, me.Alias)
 	a.False(me.HasAvatar)
 
 	(&social.SetAvatar{
 		Avatar: ioutil.NopCloser(base64.NewDecoder(base64.StdEncoding, strings.NewReader(testImgOk))),
-	}).MustDo(c)
+	}).MustDo(ac)
 
-	me = (&social.GetMe{}).MustDo(c)
+	me = (&social.GetMe{}).MustDo(ac)
 	a.True(me.HasAvatar)
 
 	avatar := (&social.GetAvatar{
 		ID: me.ID,
-	}).MustDo(c)
+	}).MustDo(ac)
 	a.Equal("image/png", avatar.Type)
 	a.True(me.ID.Equal(avatar.ID))
 	a.False(avatar.IsDownload)
@@ -100,15 +100,15 @@ func Everything(t *testing.T) {
 
 	(&social.SetAvatar{
 		Avatar: ioutil.NopCloser(base64.NewDecoder(base64.StdEncoding, strings.NewReader(testImgNotSquare))),
-	}).MustDo(c)
+	}).MustDo(ac)
 
-	me = (&social.GetMe{}).MustDo(c)
+	me = (&social.GetMe{}).MustDo(ac)
 	a.True(me.HasAvatar)
 
 	(&social.SetAvatar{
 		Avatar: nil,
-	}).MustDo(c)
+	}).MustDo(ac)
 
-	me = (&social.GetMe{}).MustDo(c)
+	me = (&social.GetMe{}).MustDo(ac)
 	a.False(me.HasAvatar)
 }

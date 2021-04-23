@@ -70,7 +70,7 @@ func OnDelete(tlbx app.Tlbx, me ID, tx sql.Tx) {
 }
 
 type Config struct {
-	OnSetSocials func(app.Tlbx, sql.Tx, *social.Social)
+	OnSetSocial func(app.Tlbx, *social.Social, sql.DoTxAdder)
 }
 
 func New(
@@ -78,7 +78,7 @@ func New(
 ) []*app.Endpoint {
 	c := config(configs...)
 	return []*app.Endpoint{
-		&app.Endpoint{
+		{
 			Description:  "get my socials",
 			Path:         (&social.GetMe{}).Path(),
 			Timeout:      500,
@@ -102,7 +102,7 @@ func New(
 				return res
 			},
 		},
-		&app.Endpoint{
+		{
 			Description:  "get socials",
 			Path:         (&social.Get{}).Path(),
 			Timeout:      500,
@@ -134,7 +134,7 @@ func New(
 				return res
 			},
 		},
-		&app.Endpoint{
+		{
 			Description:  "update socials",
 			Path:         (&social.Update{}).Path(),
 			Timeout:      500,
@@ -179,14 +179,16 @@ func New(
 					social.Alias = args.Alias.V
 				}
 				updateSocial(tx, social)
-				if c.OnSetSocials != nil {
-					c.OnSetSocials(tlbx, tx, social)
-				}
+				appTxs := sql.NewDoTxs()
+				c.OnSetSocial(tlbx, social, appTxs)
+				defer appTxs.Rollback()
+				appTxs.Do()
+				appTxs.Commit()
 				tx.Commit()
 				return nil
 			},
 		},
-		&app.Endpoint{
+		{
 			Description:  "set avatar",
 			Path:         (&social.SetAvatar{}).Path(),
 			Timeout:      500,
@@ -241,16 +243,18 @@ func New(
 				nowHasAvatar := args.Size > 0
 				if social.HasAvatar != nowHasAvatar {
 					social.HasAvatar = nowHasAvatar
-					if c.OnSetSocials != nil {
-						c.OnSetSocials(tlbx, tx, social)
-					}
+					appTxs := sql.NewDoTxs()
+					c.OnSetSocial(tlbx, social, appTxs)
+					defer appTxs.Rollback()
+					appTxs.Do()
+					appTxs.Commit()
 				}
 				updateSocial(tx, social)
 				tx.Commit()
 				return nil
 			},
 		},
-		&app.Endpoint{
+		{
 			Description:      "get avatar",
 			Path:             (&social.GetAvatar{}).Path(),
 			Timeout:          500,
@@ -286,7 +290,7 @@ func New(
 
 func config(configs ...func(c *Config)) *Config {
 	c := &Config{
-		OnSetSocials: func(_ app.Tlbx, _ sql.Tx, _ *social.Social) {},
+		OnSetSocial: func(_ app.Tlbx, _ *social.Social, _ sql.DoTxAdder) {},
 	}
 	for _, config := range configs {
 		config(c)

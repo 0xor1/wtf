@@ -21,9 +21,7 @@ func Everything(t *testing.T) {
 	a := assert.New(t)
 	r := test.NewRig(
 		config.GetProcessed(config.GetBase()),
-		fcmeps.New(func(_ app.Tlbx, _ IDs) sql.Tx {
-			return nil
-		}),
+		fcmeps.New(func(_ app.Tlbx, _ IDs, _ sql.DoTxAdder) {}),
 		ratelimit.MeMware,
 		nil,
 		true,
@@ -45,9 +43,13 @@ func Everything(t *testing.T) {
 		Val: false,
 	}).MustDo(ac)
 
+	a.False((&fcm.GetEnabled{}).MustDo(ac))
+
 	(&fcm.SetEnabled{
 		Val: true,
 	}).MustDo(ac)
+
+	a.True((&fcm.GetEnabled{}).MustDo(ac))
 
 	client1 := (&fcm.Register{
 		Topic: IDs{app.ExampleID()},

@@ -19,6 +19,9 @@ import (
 	"github.com/0xor1/tlbx/pkg/web/app/session"
 	"github.com/0xor1/tlbx/pkg/web/app/user/auth"
 	"github.com/0xor1/tlbx/pkg/web/app/user/auth/autheps"
+	"github.com/0xor1/tlbx/pkg/web/app/user/social"
+	"github.com/0xor1/tlbx/pkg/web/app/user/social/socialeps"
+	"github.com/0xor1/tlbx/pkg/web/app/user/usereps"
 )
 
 const (
@@ -166,13 +169,46 @@ func (r *rig) Do(req *http.Request) (*http.Response, error) {
 	return rec.Result(), nil
 }
 
+func NewUserRig(
+	config *config.Config,
+	eps []*app.Endpoint,
+	rateLimitMware func(iredis.Pool, ...int) func(app.Tlbx),
+	buckets []string,
+	useSocial bool,
+	register func(Rig, string, *auth.Register),
+	configUser ...func(*usereps.Config),
+) Rig {
+	userEps, configAuth := usereps.AuthExtensions(configUser...)
+	eps = app.JoinEps(eps, userEps)
+	if useSocial {
+		buckets = append(buckets, socialeps.AvatarBucket)
+		if register == nil {
+			register = func(r Rig, name string, reg *auth.Register) {
+				reg.AppData = &social.RegisterAppData{
+					Handle: name + r.Unique(),
+					Alias:  name,
+				}
+			}
+		}
+	}
+	return NewRig(
+		config,
+		app.JoinEps(eps, userEps),
+		rateLimitMware,
+		buckets,
+		true,
+		register,
+		configAuth,
+	)
+}
+
 func NewRig(
 	config *config.Config,
 	eps []*app.Endpoint,
 	rateLimitMware func(iredis.Pool, ...int) func(app.Tlbx),
 	buckets []string,
 	useAuth bool,
-	register func(r Rig, name string, reg *auth.Register),
+	register func(Rig, string, *auth.Register),
 	configAuth ...func(*autheps.Config),
 ) Rig {
 	r := &rig{
@@ -194,13 +230,13 @@ func NewRig(
 	}
 
 	if useAuth {
-		eps = append(
+		eps = app.JoinEps(
 			eps,
 			autheps.New(
 				config.App.FromEmail,
 				config.App.ActivateFmtLink,
 				config.App.ConfirmChangeEmailFmtLink,
-				configAuth...)...)
+				configAuth...))
 	}
 	Go(func() {
 		app.Run(func(c *app.Config) {
@@ -268,7 +304,7 @@ func (r *rig) createUser(handle, emailSuffix, pwd string) *testUser {
 			Code:  code,
 		}).MustDo(c)
 
-		id := *(&auth.Login{
+		id := (&auth.Login{
 			Email: email,
 			Pwd:   pwd,
 		}).MustDo(c)

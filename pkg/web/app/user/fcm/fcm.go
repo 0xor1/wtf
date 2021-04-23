@@ -2,8 +2,27 @@ package fcm
 
 import (
 	. "github.com/0xor1/tlbx/pkg/core"
+	"github.com/0xor1/tlbx/pkg/ptr"
 	"github.com/0xor1/tlbx/pkg/web/app"
 )
+
+type GetEnabled struct{}
+
+func (_ *GetEnabled) Path() string {
+	return "/user/fcm/getEnabled"
+}
+
+func (a *GetEnabled) Do(c *app.Client) (*bool, error) {
+	res := ptr.Bool(false)
+	err := app.Call(c, a.Path(), nil, &res)
+	return res, err
+}
+
+func (a *GetEnabled) MustDo(c *app.Client) bool {
+	res, err := a.Do(c)
+	PanicOn(err)
+	return *res
+}
 
 type SetEnabled struct {
 	Val bool `json:"val"`

@@ -20,7 +20,7 @@ func Everything(t *testing.T) {
 	a := assert.New(t)
 	r := test.NewRig(
 		config.Get(),
-		append(game.Eps, blockerseps.Eps...),
+		app.JoinEps(game.Eps, blockerseps.Eps),
 		ratelimit.MeMware,
 		nil,
 		false,

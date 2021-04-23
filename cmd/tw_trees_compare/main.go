@@ -128,7 +128,7 @@ func runTrees(host, email, pwd, projectName string, treeK, treeH uint) {
 	Println("projectId =", p.ID.String())
 
 	start := time.Now()
-	treesCreatePerfectKaryTree(*me, c, p.ID, p.ID, 0, 0, treeK, treeH)
+	treesCreatePerfectKaryTree(me, c, p.ID, p.ID, 0, 0, treeK, treeH)
 	Println()
 	Println("time to create tree (excluding root node)", time.Now().Sub(start))
 	Println("finished in Trees")

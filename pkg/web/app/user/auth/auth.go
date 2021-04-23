@@ -167,10 +167,10 @@ func (a *Login) Do(c *app.Client) (*ID, error) {
 	return res, err
 }
 
-func (a *Login) MustDo(c *app.Client) *ID {
+func (a *Login) MustDo(c *app.Client) ID {
 	res, err := a.Do(c)
 	PanicOn(err)
-	return res
+	return *res
 }
 
 type Logout struct{}

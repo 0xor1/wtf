@@ -28,9 +28,33 @@ func OnLogout(tlbx app.Tlbx, me ID, tx sql.Tx) {
 }
 
 func New(
-	validateFcmTopic func(app.Tlbx, IDs) sql.Tx,
+	validateFcmTopic func(app.Tlbx, IDs, sql.DoTxAdder),
 ) []*app.Endpoint {
 	return []*app.Endpoint{
+		{
+			Description:  "get fcm enabled",
+			Path:         (&fcm.GetEnabled{}).Path(),
+			Timeout:      500,
+			MaxBodyBytes: app.KB,
+			IsPrivate:    false,
+			GetDefaultArgs: func() interface{} {
+				return nil
+			},
+			GetExampleArgs: func() interface{} {
+				return nil
+			},
+			GetExampleResponse: func() interface{} {
+				return true
+			},
+			Handler: func(tlbx app.Tlbx, _ interface{}) interface{} {
+				me := me.AuthedGet(tlbx)
+				tx := service.Get(tlbx).User().ReadTx()
+				defer tx.Rollback()
+				enabled := getEnabled(tx, me)
+				tx.Commit()
+				return enabled
+			},
+		},
 		{
 			Description:  "set fcm enabled",
 			Path:         (&fcm.SetEnabled{}).Path(),
@@ -121,17 +145,15 @@ func New(
 					// to make room for this new one
 					deleteTokens(tx, me, nil, &fifthYoungestTokenCreatedOn)
 				}
-				appTx := validateFcmTopic(tlbx, args.Topic)
-				if appTx != nil {
-					defer appTx.Rollback()
-				}
+				appTxs := sql.NewDoTxs()
+				validateFcmTopic(tlbx, args.Topic, appTxs)
+				defer appTxs.Rollback()
+				appTxs.Do()
 				qry = qryInsert(qryArgs, args.Topic.StrJoin("_"), args.Token, me, *client, tlbx.Start())
 				_, err := tx.Exec(qry, qryArgs.Is()...)
 				PanicOn(err)
 				tx.Commit()
-				if appTx != nil {
-					appTx.Commit()
-				}
+				appTxs.Commit()
 				return client
 			},
 		},

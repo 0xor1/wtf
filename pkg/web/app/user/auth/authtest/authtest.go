@@ -58,7 +58,7 @@ func Everything(t *testing.T) {
 		Email: email,
 	}).MustDo(c)
 
-	id := *(&auth.Login{
+	id := (&auth.Login{
 		Email: email,
 		Pwd:   pwd,
 	}).MustDo(c)
@@ -129,7 +129,7 @@ func Everything(t *testing.T) {
 		Code:  code,
 	}).MustDo(c)
 
-	id = *(&auth.Login{
+	id = (&auth.Login{
 		Email: email,
 		Pwd:   pwd,
 	}).MustDo(c)
